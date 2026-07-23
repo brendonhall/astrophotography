@@ -151,3 +151,32 @@ def solve_gains(matched, ref_bp_rp=0.82, sigma=3.0):
     diag = dict(n=n, slope_r=slope_r, int_r=int_r, slope_b=slope_b, int_b=int_b,
                 cr=cr, cb=cb, bp_rp=bp_rp, ref_bp_rp=ref_bp_rp)
     return gains, diag
+
+
+def query_gaia(hdr, radius_deg=2.3, mag_limit=16.0, row_limit=50000):
+    """Cone-search Gaia DR3 around the header RA/Dec. Raises PCCError on failure."""
+    if "RA" not in hdr or "DEC" not in hdr:
+        raise PCCError("header missing RA/DEC for Gaia query")
+    ra, dec = float(hdr["RA"]), float(hdr["DEC"])
+    try:
+        from astroquery.gaia import Gaia
+    except Exception as e:
+        raise PCCError(f"astroquery unavailable: {e}")
+
+    adql = (
+        f"SELECT TOP {row_limit} ra, dec, phot_g_mean_mag, bp_rp "
+        f"FROM gaiadr3.gaia_source "
+        f"WHERE 1=CONTAINS(POINT('ICRS', ra, dec), "
+        f"CIRCLE('ICRS', {ra}, {dec}, {radius_deg})) "
+        f"AND phot_g_mean_mag < {mag_limit} "
+        f"AND bp_rp IS NOT NULL "
+        f"AND astrometric_params_solved > 3"
+    )
+    try:
+        job = Gaia.launch_job_async(adql)
+        tab = job.get_results()
+    except Exception as e:
+        raise PCCError(f"Gaia query failed: {e}")
+    if len(tab) == 0:
+        raise PCCError("Gaia query returned no rows")
+    return tab["ra", "dec", "phot_g_mean_mag", "bp_rp"]
