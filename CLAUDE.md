@@ -52,6 +52,7 @@ Two GUI apps are installed; both also have command-line / scripting entry points
   under a **unique versioned name** (`output/<name>_<label>.{tif,png}`), never overwriting
   a prior run. Omitting `V=` uses a timestamp.
 - `make clean` — remove `work/` intermediates
+- `make test` — run the pytest suite (offline-safe; no live Gaia queries)
 
 ## Processing pipeline
 
@@ -61,6 +62,14 @@ Each step reads a FITS and writes a FITS + preview PNG; intermediates go in `wor
 `scripts/astrolib.py` has shared helpers (FITS I/O, STF autostretch, source masking).
 Tuning parameters are constants at the top of each step script. See README.md for the
 step-by-step table.
+
+Step 03 (`03_color.py`) does **Gaia DR3 photometric color calibration (PCC)**: it
+measures per-channel gains on the **original** stacked FITS (the one with the WCS,
+passed via `--original`), then applies those gains to the working image. PCC needs
+internet (queries Gaia via `astroquery`) and writes a `..._pcc_diagnostic.png`; if
+the query fails or too few stars match, it falls back automatically to the gentle
+white-balance approach. See `scripts/pcc.py` and the README's "Photometric color
+calibration" section for details.
 
 **Output convention:** never overwrite a processed image — every processing variant gets
 its own versioned filename so results can be compared side by side. `run_pipeline.sh`

@@ -45,7 +45,7 @@ image. Each numbered step reads a FITS and writes a FITS plus a preview PNG.
 | — | `render.py`       | Render any FITS to PNG (with optional STF autostretch) |
 | 1 | `01_crop.py`       | Trim the dither margin |
 | 2 | `02_background.py` | Remove the light-pollution gradient (masked polynomial fit) |
-| 3 | `03_color.py`      | Neutralize background + gentle white balance |
+| 3 | `03_color.py`      | Neutralize background + photometric color calibration (Gaia DR3), falling back to gentle white balance |
 | 4 | `04_stretch.py`    | Linked midtones stretch: linear → nonlinear |
 | 5 | `05_finish.py`     | SCNR green, denoise, saturation → 16-bit TIFF + PNG |
 
@@ -106,7 +106,26 @@ CLAUDE.md       guidance for Claude Code
 - The SeeStar exports only the finished stack, so satellite trails that survive
   its rejection can't be cleanly removed. Re-stacking the individual subframes
   with sigma-clip rejection is the real fix — see **Re-stacking subframes** above.
-- The stacks carry a full WCS, so **photometric color calibration** against a star
-  catalog (Gaia) is a natural upgrade over the current white-balance approximation.
+- The stacks carry a full WCS, which step 3 now uses for **photometric color
+  calibration** against the Gaia DR3 catalog — see below.
 - Tools also installed locally for GUI/alternative workflows: **Siril**
   (`siril-cli`) and **SetiAstroSuitePro**.
+
+### Photometric color calibration
+
+`03_color.py` measures per-channel color gains by matching detected stars in
+the **original** stacked FITS (which carries the WCS) against **Gaia DR3**
+colors (`bp_rp`) queried live via `astroquery`, then applies those gains to the
+working image. This needs **internet access** — the query goes out to the
+Gaia archive over the network — and takes a couple of minutes on a typical
+stack. It writes a `..._pcc_diagnostic.png` alongside the FITS output, plotting
+matched-star color vs. catalog color so the fit can be sanity-checked.
+
+If the query fails, too few stars match (fewer than `MIN_STARS`), or the
+network is unavailable, the step **falls back automatically** to the simpler
+gentle white-balance approach (equalizing mid-signal levels across channels)
+that was the original default — the pipeline never hard-fails for lack of
+internet.
+
+Run `make test` to exercise the PCC and fallback code paths (offline-safe unit
+tests, no network calls) before trusting the output of a live run.
