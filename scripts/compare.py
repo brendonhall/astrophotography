@@ -7,9 +7,11 @@ same al.finish() as the real pipeline, so comparisons can't drift from output.
 
 Usage:
   python compare.py <stretched.fit> [--out DIR] [--which luminance chroma combined]
-                    [--crop CX CY HALF]
+                    [--crop CX CY HALF] [--prefix NAME]
 
-Writes output/M101_compare_<which>-denoise.png for each requested comparison.
+Writes output/<prefix>_compare_<which>-denoise.png for each requested comparison.
+The prefix defaults to the FITS OBJECT keyword (e.g. "M101"), so any target
+self-names; override with --prefix.
 """
 import os
 import sys
@@ -42,6 +44,12 @@ COMPARISONS = {
         "AFTER  -  full v2 (luminance + chroma)",
     ),
 }
+
+
+def prefix_from_header(hdr):
+    """Derive an output-name prefix from the FITS OBJECT keyword (spaces->_)."""
+    obj = str(hdr.get("OBJECT", "")).strip() if hdr is not None else ""
+    return "_".join(obj.split()) if obj else "compare"
 
 
 def noise_stats(a, box):
@@ -80,11 +88,13 @@ def main():
                     choices=list(COMPARISONS), help="which comparisons to make")
     ap.add_argument("--crop", nargs=3, type=int, metavar=("CX", "CY", "HALF"),
                     help="crop center + half-size (default: image center, H/6)")
+    ap.add_argument("--prefix", help="output name prefix (default: FITS OBJECT keyword)")
     args = ap.parse_args()
 
-    base, _ = al.load(args.stretched)
+    base, hdr = al.load(args.stretched)
     base = np.clip(base / 65535.0, 0, 1)
     H, W, _ = base.shape
+    prefix = args.prefix or prefix_from_header(hdr)
 
     if args.crop:
         cx, cy, half = args.crop
@@ -98,7 +108,7 @@ def main():
         before_kw, after_kw, lt, rt = COMPARISONS[name]
         before = al.finish(base, saturation=SATURATION, **before_kw)
         after = al.finish(base, saturation=SATURATION, **after_kw)
-        path = os.path.join(args.out, f"M101_compare_{name}-denoise.png")
+        path = os.path.join(args.out, f"{prefix}_compare_{name}-denoise.png")
         stitch(before, after, lt, rt, cx, cy, half, path)
         cb, lb = noise_stats(before, box)
         ca, la = noise_stats(after, box)
