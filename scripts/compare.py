@@ -73,6 +73,13 @@ def crop_img(a, cx, cy, half, out=860):
     return Image.fromarray((c*255+0.5).astype(np.uint8)).resize((out, out), Image.LANCZOS)
 
 
+def resolve_crop(args, H, W):
+    """Return (cx, cy, half) from --crop, or default to image center, H/6."""
+    if args.crop:
+        return tuple(args.crop)
+    return W // 2, H // 2, min(H, W) // 6
+
+
 def stitch(before, after, ltext, rtext, cx, cy, half, path):
     b, a = crop_img(before, cx, cy, half), crop_img(after, cx, cy, half)
     W, H = b.size
@@ -108,11 +115,11 @@ def main():
     if args.pair:
         before, bhdr = al.load(args.pair[0]); before = np.clip(before / 65535.0, 0, 1)
         after, _ = al.load(args.pair[1]); after = np.clip(after / 65535.0, 0, 1)
+        if before.shape != after.shape:
+            ap.error(f"--pair images must have matching shapes: "
+                     f"{args.pair[0]} is {before.shape}, {args.pair[1]} is {after.shape}")
         H, W, _ = before.shape
-        if args.crop:
-            cx, cy, half = args.crop
-        else:
-            cx, cy, half = W // 2, H // 2, min(H, W) // 6
+        cx, cy, half = resolve_crop(args, H, W)
         prefix = args.prefix or prefix_from_header(bhdr)
         os.makedirs(args.out, exist_ok=True)
         path = os.path.join(args.out, f"{prefix}_compare_{args.name}.png")
@@ -128,10 +135,7 @@ def main():
     H, W, _ = base.shape
     prefix = args.prefix or prefix_from_header(hdr)
 
-    if args.crop:
-        cx, cy, half = args.crop
-    else:
-        cx, cy, half = W // 2, H // 2, min(H, W) // 6
+    cx, cy, half = resolve_crop(args, H, W)
     # a background patch for noise stats: offset toward a corner, clamped in-frame
     box = (min(int(0.2*H), H-180), min(int(0.15*W), W-180), 180)
 
