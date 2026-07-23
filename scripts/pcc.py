@@ -183,3 +183,76 @@ def query_gaia(hdr, radius_deg=2.3, mag_limit=16.0, row_limit=50000):
     if len(tab) == 0:
         raise PCCError("Gaia query returned no rows")
     return tab["ra", "dec", "phot_g_mean_mag", "bp_rp"]
+
+
+def photometric_calibration(img_adu, hdr, ref_bp_rp=0.82, min_stars=30,
+                            gain_band=(0.5, 2.0), tol_arcsec=5.0):
+    """End-to-end: detect -> Gaia -> match -> solve gains. Raises PCCError to fall back."""
+    from astropy.wcs import WCS
+    try:
+        # naxis=2: on-disk FITS is a 3-axis RGB cube (NAXIS=3); WCS() with no
+        # naxis kwarg raises on SIP distortion + 3D headers ("only work in 2
+        # dimensions"). naxis=2 selects the celestial pair before parsing.
+        wcs = WCS(hdr, naxis=2).celestial
+        if not wcs.has_celestial:
+            raise PCCError("no celestial WCS in header")
+    except PCCError:
+        raise
+    except Exception as e:
+        raise PCCError(f"WCS parse failed: {e}")
+
+    stars = detect_stars(img_adu)
+    gaia = query_gaia(hdr)
+    matched = cross_match(stars, gaia, wcs, tol_arcsec=tol_arcsec)
+    if len(matched) < min_stars:
+        raise PCCError(f"only {len(matched)} matched stars (< {min_stars})")
+
+    gains, diag = solve_gains(matched, ref_bp_rp=ref_bp_rp)
+    for name, gv in zip("rgb", gains):
+        if not (gain_band[0] <= gv <= gain_band[1]):
+            raise PCCError(f"gain {name}={gv:.3f} outside sanity band {gain_band}")
+
+    report = dict(gains=gains, n_matched=len(matched), matched=matched, **diag)
+    return gains, report
+
+
+def save_diagnostic(report, path):
+    """Color-color scatter (r/g and b/g vs Gaia bp_rp) with fits + white point."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    bp_rp = report["bp_rp"]; cr = report["cr"]; cb = report["cb"]
+    xr = np.linspace(float(np.min(bp_rp)), float(np.max(bp_rp)), 50)
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.scatter(bp_rp, cr, s=8, c="tab:red", alpha=0.4, label="r/g")
+    ax.scatter(bp_rp, cb, s=8, c="tab:blue", alpha=0.4, label="b/g")
+    ax.plot(xr, report["slope_r"] * xr + report["int_r"], c="darkred")
+    ax.plot(xr, report["slope_b"] * xr + report["int_b"], c="darkblue")
+    ax.axvline(report["ref_bp_rp"], ls="--", c="k", lw=1,
+               label=f"white point ({report['ref_bp_rp']})")
+    gr, _, gb = report["gains"]
+    ax.set_title(f"PCC — {report['n_matched']} stars — gains R={gr:.3f} B={gb:.3f}")
+    ax.set_xlabel("Gaia BP-RP"); ax.set_ylabel("instrumental ratio")
+    ax.legend(); fig.tight_layout(); fig.savefig(path, dpi=110); plt.close(fig)
+
+
+def _main(argv):
+    import argparse
+    import astrolib as al
+    ap = argparse.ArgumentParser(description="Run PCC on a stacked FITS (measurement only).")
+    ap.add_argument("fits")
+    ap.add_argument("--ref-bp-rp", type=float, default=0.82)
+    ap.add_argument("--diagnostic", help="path to write the color-color PNG")
+    args = ap.parse_args(argv)
+    img, hdr = al.load(args.fits)
+    gains, report = photometric_calibration(img, hdr, ref_bp_rp=args.ref_bp_rp)
+    print(f"matched={report['n_matched']}  gains R={gains[0]:.4f} G=1 B={gains[2]:.4f}")
+    if args.diagnostic:
+        save_diagnostic(report, args.diagnostic)
+        print("wrote", args.diagnostic)
+
+
+if __name__ == "__main__":
+    import sys
+    _main(sys.argv[1:])
