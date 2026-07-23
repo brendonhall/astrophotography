@@ -64,3 +64,53 @@ def test_cross_match_pairs_within_tolerance():
     assert len(matched) == 2
     assert set(np.round(matched["bp_rp"], 1)) == {0.5, 1.5}
     assert np.all(matched["sep_arcsec"] < 5.0)
+
+
+def test_cross_match_dedup_keeps_closest_star():
+    w = _toy_wcs()
+    # Two stars near the same Gaia source: star0 is an exact sky match (sep=0),
+    # star1 is offset by 1 pixel (cdelt=0.001 deg/px -> ~3.6"), still within tol_arcsec.
+    xs, ys = np.array([50.0, 51.0]), np.array([50.0, 50.0])
+    sky = w.pixel_to_world(xs, ys)
+    stars = Table({"x": xs, "y": ys,
+                   "r": [10.0, 40.0], "g": [20.0, 50.0], "b": [30.0, 60.0]})
+    gaia = Table({"ra": [sky[0].ra.deg], "dec": [sky[0].dec.deg], "bp_rp": [0.75]})
+
+    matched = pcc.cross_match(stars, gaia, w, tol_arcsec=5.0)
+
+    # Only one Gaia source exists, so only one row can survive dedup -- and it
+    # must be the closer star (star0), not the farther one (star1).
+    assert len(matched) == 1
+    row = matched[0]
+    assert np.isclose(row["x"], 50.0)
+    assert np.isclose(row["y"], 50.0)
+    assert np.isclose(row["r"], 10.0)
+    assert np.isclose(row["g"], 20.0)
+    assert np.isclose(row["b"], 30.0)
+    assert row["sep_arcsec"] < 1.0  # much closer than the discarded ~3.6" star
+
+
+def test_cross_match_columns_aligned_per_row():
+    w = _toy_wcs()
+    xs, ys = np.array([50.0, 60.0, 30.0]), np.array([50.0, 40.0, 70.0])
+    sky = w.pixel_to_world(xs, ys)
+    stars = Table({"x": xs, "y": ys,
+                   "r": [11.0, 22.0, 33.0], "g": [111.0, 222.0, 333.0], "b": [1.1, 2.2, 3.3]})
+    gaia = Table({
+        "ra": [sky[0].ra.deg, sky[1].ra.deg],
+        "dec": [sky[0].dec.deg, sky[1].dec.deg],
+        "bp_rp": [0.5, 1.5],
+    })
+
+    matched = pcc.cross_match(stars, gaia, w, tol_arcsec=5.0)
+
+    # Dedup sorts by sep_arcsec, so row order need not match input order --
+    # look rows up by x to confirm r/g/b/bp_rp stay aligned to the right star.
+    assert len(matched) == 2
+    by_x = {round(float(row["x"]), 3): row for row in matched}
+    row0 = by_x[50.0]
+    assert (float(row0["r"]), float(row0["g"]), float(row0["b"])) == (11.0, 111.0, 1.1)
+    assert np.isclose(row0["bp_rp"], 0.5)
+    row1 = by_x[60.0]
+    assert (float(row1["r"]), float(row1["g"]), float(row1["b"])) == (22.0, 222.0, 2.2)
+    assert np.isclose(row1["bp_rp"], 1.5)
