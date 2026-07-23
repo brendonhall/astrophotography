@@ -157,7 +157,10 @@ def query_gaia(hdr, radius_deg=2.3, mag_limit=16.0, row_limit=50000):
     """Cone-search Gaia DR3 around the header RA/Dec. Raises PCCError on failure."""
     if "RA" not in hdr or "DEC" not in hdr:
         raise PCCError("header missing RA/DEC for Gaia query")
-    ra, dec = float(hdr["RA"]), float(hdr["DEC"])
+    try:
+        ra, dec = float(hdr["RA"]), float(hdr["DEC"])
+    except (TypeError, ValueError) as e:
+        raise PCCError(f"header RA/DEC not parseable as float: {e}")
     try:
         from astroquery.gaia import Gaia
     except Exception as e:
