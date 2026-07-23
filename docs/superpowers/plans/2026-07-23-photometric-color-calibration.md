@@ -742,15 +742,16 @@ In `scripts/compare.py`, add these args in `main()`'s argparse block:
 Then, immediately after `args = ap.parse_args()`, handle the pair mode and return early:
 ```python
     if args.pair:
-        before, _ = al.load(args.pair[0]); before = np.clip(before / 65535.0, 0, 1)
+        before, bhdr = al.load(args.pair[0]); before = np.clip(before / 65535.0, 0, 1)
         after, _ = al.load(args.pair[1]); after = np.clip(after / 65535.0, 0, 1)
         H, W, _ = before.shape
         if args.crop:
             cx, cy, half = args.crop
         else:
             cx, cy, half = W // 2, H // 2, min(H, W) // 6
+        prefix = args.prefix or prefix_from_header(bhdr)
         os.makedirs(args.out, exist_ok=True)
-        path = os.path.join(args.out, f"M101_compare_{args.name}.png")
+        path = os.path.join(args.out, f"{prefix}_compare_{args.name}.png")
         stitch(before, after, args.label_before, args.label_after, cx, cy, half, path)
         print(f"wrote {os.path.relpath(path)}")
         return
@@ -772,7 +773,7 @@ make run FITS="$IN" V=pcc          # PCC path (03 gets --original via run_pipeli
 .venv/bin/python scripts/compare.py --pair work/04_nopcc.fit work/04_stretch.fit \
   --name pcc --label-before "gentle WB" --label-after "PCC" --crop 1040 1936 300
 ```
-Expected: writes `output/M101_compare_pcc.png`. Open it: star colors should be better differentiated (blue/white/orange) under PCC vs the flatter gentle-WB rendering.
+Expected: writes `output/M_101_compare_pcc.png`. Open it: star colors should be better differentiated (blue/white/orange) under PCC vs the flatter gentle-WB rendering.
 
 - [ ] **Step 3: Run the test suite (guard against regressions)**
 
@@ -815,7 +816,7 @@ Expected: tests pass; pipeline prints PCC gains + star count at step 03; writes 
 
 - [ ] **Step 4: Visual confirmation**
 
-Open `output/M101_compare_pcc.png` and the final image. Confirm star colors look physically plausible (hot stars blue-white, cool stars orange) and the background stays neutral. If PCC fell back to gentle WB (e.g. offline), note that in the run summary rather than claiming PCC ran.
+Open `output/M_101_compare_pcc.png` and the final image. Confirm star colors look physically plausible (hot stars blue-white, cool stars orange) and the background stays neutral. If PCC fell back to gentle WB (e.g. offline), note that in the run summary rather than claiming PCC ran.
 
 - [ ] **Step 5: Commit**
 
