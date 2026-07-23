@@ -218,6 +218,8 @@ def photometric_calibration(img_adu, hdr, ref_bp_rp=0.82, min_stars=30,
 
 def save_diagnostic(report, path):
     """Color-color scatter (r/g and b/g vs Gaia bp_rp) with fits + white point."""
+    import os
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt

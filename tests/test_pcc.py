@@ -1,5 +1,4 @@
 import numpy as np
-import pytest
 import pcc
 from astropy.table import Table
 from astropy.wcs import WCS

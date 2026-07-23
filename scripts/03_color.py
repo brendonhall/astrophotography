@@ -45,7 +45,7 @@ def gentle_white_balance(img, pedestal, clamp=(0.85, 1.15)):
     return out
 
 
-def main(infile, outfile, original=None, no_pcc=False):
+def main(infile, outfile, original=None, no_pcc=False, diagnostic=None):
     img, hdr = al.load(infile)
     out = np.empty_like(img)
 
@@ -57,24 +57,36 @@ def main(infile, outfile, original=None, no_pcc=False):
         out[..., c] = img[..., c] - b + PEDESTAL
     print()
 
+    # Keep a pristine, never-mutated copy of the neutralized image so any
+    # fallback (PCCError or an unexpected failure after gains were computed,
+    # e.g. in save_diagnostic) always starts from the same starting point --
+    # never from an already color-corrected array (which would silently
+    # double-apply a correction).
+    neutralized = out.copy()
+
     # 2. color balance: PCC from the original (WCS-bearing) stack, else gentle WB
+    diag_path = diagnostic or outfile.replace(".fit", "_pcc_diagnostic.png")
     if original and not no_pcc:
         try:
             oimg, ohdr = al.load(original)
             gains, report = pcc.photometric_calibration(
                 oimg, ohdr, ref_bp_rp=REF_BP_RP, min_stars=MIN_STARS)
-            out = pcc.apply_gains(out, gains, PEDESTAL)
+            # Write the diagnostic BEFORE applying gains: if this raises, we
+            # fall through to the fallback below instead of having already
+            # mutated `out` with a correction we then can't report cleanly.
+            pcc.save_diagnostic(report, diag_path)
+            result = pcc.apply_gains(neutralized, gains, PEDESTAL)
+            out = result
             print(f"  PCC gains (R,G,B) = ({gains[0]:.3f}, 1.000, {gains[2]:.3f}) "
                   f"from {report['n_matched']} stars")
-            pcc.save_diagnostic(report, outfile.replace(".fit", "_pcc_diagnostic.png"))
         except pcc.PCCError as e:
             print(f"  WARNING: PCC unavailable ({e}); using gentle white balance")
-            out = gentle_white_balance(out, PEDESTAL)
+            out = gentle_white_balance(neutralized, PEDESTAL)
         except Exception as e:
             print(f"  WARNING: PCC attempt failed ({type(e).__name__}: {e}); using gentle white balance")
-            out = gentle_white_balance(out, PEDESTAL)
+            out = gentle_white_balance(neutralized, PEDESTAL)
     else:
-        out = gentle_white_balance(out, PEDESTAL)
+        out = gentle_white_balance(neutralized, PEDESTAL)
 
     al.save(outfile, out, hdr)
     al.save_preview(outfile.replace(".fit", "_preview.png"), img_adu=out)
@@ -87,5 +99,7 @@ if __name__ == "__main__":
     ap.add_argument("infile"); ap.add_argument("outfile")
     ap.add_argument("--original", help="original stacked FITS (with WCS) for PCC")
     ap.add_argument("--no-pcc", action="store_true")
+    ap.add_argument("--diagnostic", help="path for the PCC color-color diagnostic PNG "
+                                          "(default: <outfile>_pcc_diagnostic.png)")
     a = ap.parse_args()
-    main(a.infile, a.outfile, original=a.original, no_pcc=a.no_pcc)
+    main(a.infile, a.outfile, original=a.original, no_pcc=a.no_pcc, diagnostic=a.diagnostic)
