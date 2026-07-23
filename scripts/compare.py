@@ -12,6 +12,14 @@ Usage:
 Writes output/<prefix>_compare_<which>-denoise.png for each requested comparison.
 The prefix defaults to the FITS OBJECT keyword (e.g. "M101"), so any target
 self-names; override with --prefix.
+
+Alternatively, compare two arbitrary stretched FITS directly (e.g. a PCC vs.
+gentle-WB before/after) instead of denoise variants:
+
+  python compare.py --pair BEFORE.fit AFTER.fit --name NAME \
+                    --label-before TEXT --label-after TEXT [--crop CX CY HALF]
+
+Writes output/<prefix>_compare_<name>.png.
 """
 import os
 import sys
@@ -82,14 +90,38 @@ def main():
     default_out = os.path.join(os.path.dirname(here), "output")
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("stretched", help="nonlinear stretched FITS (e.g. work/04_stretch.fit)")
+    ap.add_argument("stretched", nargs="?",
+                    help="nonlinear stretched FITS (e.g. work/04_stretch.fit)")
     ap.add_argument("--out", default=default_out, help="output directory")
     ap.add_argument("--which", nargs="+", default=list(COMPARISONS),
                     choices=list(COMPARISONS), help="which comparisons to make")
     ap.add_argument("--crop", nargs=3, type=int, metavar=("CX", "CY", "HALF"),
                     help="crop center + half-size (default: image center, H/6)")
     ap.add_argument("--prefix", help="output name prefix (default: FITS OBJECT keyword)")
+    ap.add_argument("--pair", nargs=2, metavar=("BEFORE", "AFTER"),
+                    help="two stretched FITS to compare directly (bypasses finish variants)")
+    ap.add_argument("--name", default="pair", help="output name suffix for --pair mode")
+    ap.add_argument("--label-before", default="BEFORE")
+    ap.add_argument("--label-after", default="AFTER")
     args = ap.parse_args()
+
+    if args.pair:
+        before, bhdr = al.load(args.pair[0]); before = np.clip(before / 65535.0, 0, 1)
+        after, _ = al.load(args.pair[1]); after = np.clip(after / 65535.0, 0, 1)
+        H, W, _ = before.shape
+        if args.crop:
+            cx, cy, half = args.crop
+        else:
+            cx, cy, half = W // 2, H // 2, min(H, W) // 6
+        prefix = args.prefix or prefix_from_header(bhdr)
+        os.makedirs(args.out, exist_ok=True)
+        path = os.path.join(args.out, f"{prefix}_compare_{args.name}.png")
+        stitch(before, after, args.label_before, args.label_after, cx, cy, half, path)
+        print(f"wrote {os.path.relpath(path)}")
+        return
+
+    if not args.stretched:
+        ap.error("the following arguments are required: stretched (unless --pair is given)")
 
     base, hdr = al.load(args.stretched)
     base = np.clip(base / 65535.0, 0, 1)
