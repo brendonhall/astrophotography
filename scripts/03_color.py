@@ -11,7 +11,6 @@ Two light-touch corrections appropriate for a first pass on OSC data:
 A full photometric calibration (matching star colors to a catalog via the WCS)
 is the more advanced next step; noted for later.
 """
-import sys
 import numpy as np
 import astrolib as al
 
@@ -71,6 +70,9 @@ def main(infile, outfile, original=None, no_pcc=False):
             pcc.save_diagnostic(report, outfile.replace(".fit", "_pcc_diagnostic.png"))
         except pcc.PCCError as e:
             print(f"  WARNING: PCC unavailable ({e}); using gentle white balance")
+            out = gentle_white_balance(out, PEDESTAL)
+        except Exception as e:
+            print(f"  WARNING: PCC attempt failed ({type(e).__name__}: {e}); using gentle white balance")
             out = gentle_white_balance(out, PEDESTAL)
     else:
         out = gentle_white_balance(out, PEDESTAL)
