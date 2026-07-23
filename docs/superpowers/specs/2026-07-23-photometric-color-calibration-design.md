@@ -99,9 +99,18 @@ Importable library + standalone CLI. Small, independently testable units:
 
 ### Data flow position
 
-PCC runs inside step 03, on **linear, background-extracted, background-neutralized**
-data (input `work/02_bg.fit`). Photometry must be linear, so this placement is
-correct; it happens before the nonlinear stretch (step 04).
+PCC **measures** star colors on the **original stacked FITS** (the pipeline
+input), not on the intermediates. Reason: `al.save` copies only a few header
+keys and drops the SIP WCS, and step 01's crop shifts the pixel grid — so the
+intermediates can neither be cross-matched to Gaia nor carry RA/Dec. The
+original stack is linear (correct for photometry) and retains the full WCS.
+
+PCC returns three channel **gains** (global scalars). Step 03 **applies** them to
+its working image (the cropped, background-extracted, background-neutralized
+`work/02_bg.fit`). Because the gains are global channel ratios, the crop and
+neutralization do not affect their validity. This happens before the nonlinear
+stretch (step 04). `run_pipeline.sh` passes the original input path to step 03 so
+it can load the original for measurement.
 
 ## Dependencies
 
