@@ -114,3 +114,29 @@ def test_cross_match_columns_aligned_per_row():
     row1 = by_x[60.0]
     assert (float(row1["r"]), float(row1["g"]), float(row1["b"])) == (22.0, 222.0, 2.2)
     assert np.isclose(row1["bp_rp"], 1.5)
+
+
+def _inject_star(img, x, y, amp, fwhm=3.0):
+    H, W, _ = img.shape
+    sig = fwhm / 2.355
+    yy, xx = np.mgrid[0:H, 0:W]
+    g2d = np.exp(-((xx - x) ** 2 + (yy - y) ** 2) / (2 * sig ** 2))
+    for c in range(3):
+        img[..., c] += amp[c] * g2d
+
+
+def test_detect_stars_finds_injected_and_measures_color():
+    rng = np.random.RandomState(2)
+    img = rng.normal(1000.0, 5.0, (120, 120, 3))       # flat noisy background
+    # three stars with distinct colors (r:g:b amplitudes)
+    _inject_star(img, 30, 40, (2000, 1000, 500))
+    _inject_star(img, 80, 70, (800, 1000, 1200))
+    _inject_star(img, 60, 20, (1500, 1500, 1500))
+
+    stars = pcc.detect_stars(img, fwhm=3.0, threshold_sigma=5.0)
+    assert len(stars) >= 3
+    # locate the star nearest (30,40) and check its r/g > 1 (red star)
+    d = (stars["x"] - 30) ** 2 + (stars["y"] - 40) ** 2
+    red = stars[int(np.argmin(d))]
+    assert red["r"] / red["g"] > 1.3
+    assert red["b"] / red["g"] < 0.9

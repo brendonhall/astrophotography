@@ -71,6 +71,52 @@ def cross_match(stars, gaia, wcs, tol_arcsec=5.0):
     return rows
 
 
+def detect_stars(img_adu, fwhm=3.0, threshold_sigma=5.0, aperture_r=4.0,
+                 annulus=(6.0, 9.0), sat=60000.0, edge=20, min_flux=1.0):
+    """Detect stars on luminance and measure per-channel aperture flux."""
+    from astropy.stats import sigma_clipped_stats
+    from astropy.table import Table
+    from photutils.detection import DAOStarFinder
+    from photutils.aperture import (CircularAperture, CircularAnnulus,
+                                    aperture_photometry)
+
+    img = np.asarray(img_adu, dtype=np.float64)
+    lum = img.mean(axis=2)
+    _, med, std = sigma_clipped_stats(lum, sigma=3.0)
+
+    finder = DAOStarFinder(fwhm=fwhm, threshold=threshold_sigma * std)
+    sources = finder(lum - med)
+    if sources is None or len(sources) == 0:
+        raise PCCError("no stars detected")
+
+    H, W = lum.shape
+    x = np.asarray(sources["xcentroid"])
+    y = np.asarray(sources["ycentroid"])
+    peak = np.asarray(sources["peak"])
+    keep = ((x > edge) & (x < W - edge) & (y > edge) & (y < H - edge)
+            & (peak + med < sat))
+    x, y = x[keep], y[keep]
+    if len(x) == 0:
+        raise PCCError("no stars survive edge/saturation cuts")
+
+    positions = np.column_stack([x, y])
+    ap = CircularAperture(positions, r=aperture_r)
+    ann = CircularAnnulus(positions, r_in=annulus[0], r_out=annulus[1])
+    flux = {}
+    for c, name in enumerate("rgb"):
+        chan = img[..., c]
+        src = aperture_photometry(chan, ap)["aperture_sum"]
+        bkg = aperture_photometry(chan, ann)["aperture_sum"] / ann.area
+        flux[name] = np.asarray(src) - np.asarray(bkg) * ap.area
+
+    tab = Table({"x": x, "y": y, "r": flux["r"], "g": flux["g"], "b": flux["b"]})
+    good = (tab["r"] > min_flux) & (tab["g"] > min_flux) & (tab["b"] > min_flux)
+    tab = tab[good]
+    if len(tab) == 0:
+        raise PCCError("no stars with valid positive photometry")
+    return tab
+
+
 def solve_gains(matched, ref_bp_rp=0.82, sigma=3.0):
     """Regress instrumental color ratios vs Gaia bp_rp; solve gains at the white point."""
     r = np.asarray(matched["r"], float)
