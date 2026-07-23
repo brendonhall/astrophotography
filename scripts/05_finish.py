@@ -20,41 +20,15 @@ LUMA_DENOISE = 0.012  # TV-denoise weight on luminance (0 = off)
 CHROMA_DENOISE = 4.0  # gaussian sigma on chroma (px) - was 1.2
 
 
-def rgb_to_hsv(rgb):
-    from matplotlib.colors import rgb_to_hsv as f
-    return f(np.clip(rgb, 0, 1))
-
-
-def hsv_to_rgb(hsv):
-    from matplotlib.colors import hsv_to_rgb as f
-    return f(hsv)
-
-
 def main(infile, outfile_base):
-    from scipy import ndimage
     img, hdr = al.load(infile)
     img = np.clip(img / 65535.0, 0, 1)
 
-    # 1. SCNR green (average neutral protection)
-    img[..., 1] = np.minimum(img[..., 1], 0.5 * (img[..., 0] + img[..., 2]))
-
-    # 2. luminance denoise (edge-preserving), then 3. chroma denoise (heavy),
-    #    working in a luminance/chroma split so we can treat them differently.
-    lum = img.mean(axis=2, keepdims=True)
-    chroma = img - lum
-
-    if LUMA_DENOISE > 0:
-        from skimage.restoration import denoise_tv_chambolle
-        lum[..., 0] = denoise_tv_chambolle(lum[..., 0], weight=LUMA_DENOISE)
-
-    for c in range(3):
-        chroma[..., c] = ndimage.gaussian_filter(chroma[..., c], CHROMA_DENOISE)
-    img = np.clip(lum + chroma, 0, 1)
-
-    # 4. saturation boost (after denoise, so it doesn't re-amplify color noise)
-    hsv = rgb_to_hsv(img)
-    hsv[..., 1] = np.clip(hsv[..., 1] * SATURATION, 0, 1)
-    img = hsv_to_rgb(hsv)
+    # SCNR green -> luminance denoise -> chroma denoise -> saturation.
+    # The shared al.finish() is the single source of truth for this so the
+    # comparison tooling (scripts/compare.py) can't drift from the pipeline.
+    img = al.finish(img, saturation=SATURATION, luma_denoise=LUMA_DENOISE,
+                    chroma_denoise=CHROMA_DENOISE)
 
     # export
     from PIL import Image

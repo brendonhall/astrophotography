@@ -81,3 +81,41 @@ def source_mask(chan, k=3.0, dilate=6):
     if dilate:
         m = ndimage.binary_dilation(m, iterations=dilate)
     return m
+
+
+# ---------- nonlinear finishing ----------
+
+def finish(img01, saturation=1.20, luma_denoise=0.012, chroma_denoise=4.0, scnr=True):
+    """Finish a nonlinear [0,1] RGB image and return [0,1] RGB.
+
+    Steps (in order): SCNR green -> luminance denoise -> chroma denoise ->
+    saturation. Passing 0 (or False) for a step disables it, which is what the
+    comparison tooling uses to isolate one operation at a time.
+
+      saturation     : HSV saturation multiplier (1.0 = no change)
+      luma_denoise   : TV-denoise weight on luminance (0 = off)
+      chroma_denoise : gaussian sigma (px) on the color channels (0 = off)
+      scnr           : remove residual green (g clamped to the R/B average)
+    """
+    from scipy import ndimage
+    from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
+    img = np.clip(img01, 0.0, 1.0).astype(np.float64).copy()
+
+    if scnr:
+        img[..., 1] = np.minimum(img[..., 1], 0.5 * (img[..., 0] + img[..., 2]))
+
+    lum = img.mean(axis=2, keepdims=True)
+    chroma = img - lum
+    if luma_denoise:
+        from skimage.restoration import denoise_tv_chambolle
+        lum[..., 0] = denoise_tv_chambolle(lum[..., 0], weight=luma_denoise)
+    if chroma_denoise:
+        for c in range(3):
+            chroma[..., c] = ndimage.gaussian_filter(chroma[..., c], chroma_denoise)
+    img = np.clip(lum + chroma, 0.0, 1.0)
+
+    if saturation and saturation != 1.0:
+        hsv = rgb_to_hsv(img)
+        hsv[..., 1] = np.clip(hsv[..., 1] * saturation, 0.0, 1.0)
+        img = hsv_to_rgb(hsv)
+    return img
