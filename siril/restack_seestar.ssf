@@ -1,0 +1,34 @@
+# restack_seestar.ssf — re-stack SeeStar subframes with sigma-clip rejection
+#
+# Turns a folder of SeeStar "Save each frame in enhancing" subs into a single
+# integrated FITS that beats the on-device stack: proper outlier rejection
+# removes satellite/plane trails and residual hot pixels the SeeStar keeps.
+#
+# Use this variant when the subs are ALREADY COLOR (3-channel / debayered),
+# which is the usual case for SeeStar enhanced subs. If a sub inspects as a
+# single-channel Bayer frame (a BAYERPAT header card, NAXIS=2), use
+# restack_seestar_cfa.ssf instead.
+#
+# SeeStar subs are dark-subtracted on-device, so there are no darks/flats/bias
+# to apply — we go straight from conversion to register + stack.
+#
+# Working directory (Siril's -d) must BE the folder holding the *.fit subs.
+# Run it via the wrapper:  ./siril/restack.sh <sub-folder> [output-name]
+# Or headless directly:    siril-cli -d <sub-folder> -s siril/restack_seestar.ssf
+
+requires 1.2.0
+
+# 1. Build a Siril sequence named "light" from every FITS in this folder.
+convert light -out=process
+
+# 2. Global star registration — align every sub to the best reference frame.
+cd process
+register light
+
+# 3. Integrate with winsorized sigma-clip rejection (3.0 low / 3.0 high).
+#    Rejection is what kills trails + hot pixels; -norm=addscale matches
+#    background/scale across subs before combining.
+stack r_light rej 3 3 -norm=addscale -output_norm -out=../restacked
+
+cd ..
+close

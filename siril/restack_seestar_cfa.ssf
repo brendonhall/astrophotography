@@ -1,0 +1,28 @@
+# restack_seestar_cfa.ssf — re-stack SeeStar RAW BAYER subframes
+#
+# Same as restack_seestar.ssf, but for subs saved as single-channel Bayer
+# (CFA) data — i.e. a sub that inspects with NAXIS=2 and a BAYERPAT header
+# card. This variant debayers during conversion so registration/stacking
+# happen on color data.
+#
+# If your subs are already 3-channel color, use restack_seestar.ssf instead
+# (debayering already-color data corrupts it).
+#
+# Working directory (Siril's -d) must BE the folder holding the *.fit subs.
+# Run it via the wrapper:  ./siril/restack.sh --cfa <sub-folder> [output-name]
+# Or headless directly:    siril-cli -d <sub-folder> -s siril/restack_seestar_cfa.ssf
+
+requires 1.2.0
+
+# 1. Build a sequence AND debayer each frame (CFA -> RGB) during conversion.
+convert light -debayer -out=process
+
+# 2. Global star registration.
+cd process
+register light
+
+# 3. Winsorized sigma-clip integration (3.0 / 3.0).
+stack r_light rej 3 3 -norm=addscale -output_norm -out=../restacked
+
+cd ..
+close
