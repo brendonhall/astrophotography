@@ -1,0 +1,10 @@
+# Astrophotography processing pipeline dependencies.
+# Loosely pinned for portability between macOS and Linux.
+# Recreate the environment with:  make setup   (or see README.md)
+numpy>=1.26,<2.0
+astropy>=6.0
+scipy>=1.11
+photutils>=1.10
+scikit-image>=0.22
+matplotlib>=3.7
+pillow>=10.0

@@ -1,0 +1,31 @@
+# --- Data & rendered images: kept local + in Dropbox, never committed to git ---
+data/*
+!data/.gitkeep
+output/*
+!output/.gitkeep
+work/
+
+# Astronomy / image file types (belt-and-suspenders, wherever they land)
+*.fit
+*.fits
+*.xisf
+*.cr2
+*.raw
+*.tif
+*.tiff
+*.png
+*.jpg
+*.jpeg
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# --- macOS / editors ---
+.DS_Store
+.idea/
+.vscode/
