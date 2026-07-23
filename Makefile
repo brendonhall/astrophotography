@@ -2,7 +2,10 @@
 VENV := .venv
 PY   := $(VENV)/bin/python
 
-.PHONY: setup inspect run clean help
+.PHONY: setup inspect run clean help test
+
+test:
+	$(PY) -m pytest -q
 
 help:
 	@echo "make setup                  - create .venv and install requirements"

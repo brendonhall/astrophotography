@@ -8,3 +8,5 @@ photutils>=1.10
 scikit-image>=0.22
 matplotlib>=3.7
 pillow>=10.0
+astroquery>=0.4.7
+pytest>=8.0
