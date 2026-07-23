@@ -40,6 +40,37 @@ def _robust_linfit(x, y, sigma=3.0, iters=3):
     return slope, intercept, len(xf)
 
 
+def cross_match(stars, gaia, wcs, tol_arcsec=5.0):
+    """Match detected stars to Gaia by sky position; dedupe (closest wins)."""
+    from astropy.coordinates import SkyCoord
+    from astropy.table import Table
+    import astropy.units as u
+
+    star_sky = wcs.pixel_to_world(np.asarray(stars["x"]), np.asarray(stars["y"]))
+    gaia_sky = SkyCoord(np.asarray(gaia["ra"]) * u.deg, np.asarray(gaia["dec"]) * u.deg)
+
+    idx, sep2d, _ = star_sky.match_to_catalog_sky(gaia_sky)
+    sep = sep2d.arcsec
+    keep = sep < tol_arcsec
+
+    rows = Table({
+        "x": np.asarray(stars["x"])[keep],
+        "y": np.asarray(stars["y"])[keep],
+        "r": np.asarray(stars["r"])[keep],
+        "g": np.asarray(stars["g"])[keep],
+        "b": np.asarray(stars["b"])[keep],
+        "bp_rp": np.asarray(gaia["bp_rp"])[idx[keep]],
+        "gaia_idx": idx[keep],
+        "sep_arcsec": sep[keep],
+    })
+    # dedupe: keep the closest star per Gaia source
+    rows.sort("sep_arcsec")
+    _, first = np.unique(rows["gaia_idx"], return_index=True)
+    rows = rows[np.sort(first)]
+    rows.remove_column("gaia_idx")
+    return rows
+
+
 def solve_gains(matched, ref_bp_rp=0.82, sigma=3.0):
     """Regress instrumental color ratios vs Gaia bp_rp; solve gains at the white point."""
     r = np.asarray(matched["r"], float)
