@@ -92,9 +92,22 @@ def detect_stars(img_adu, fwhm=3.0, threshold_sigma=5.0, aperture_r=4.0,
     H, W = lum.shape
     x = np.asarray(sources["xcentroid"])
     y = np.asarray(sources["ycentroid"])
-    peak = np.asarray(sources["peak"])
+
+    # Reject on per-channel raw ADU, not the luminance (mean-of-RGB) peak: a
+    # star saturated in a single channel (e.g. R=70000, G=B=500) has a
+    # luminance peak that looks unsaturated, but its clipped channel flux
+    # would still corrupt the color regression.
+    chan_max = img.max(axis=2)
+    xi = np.clip(np.round(x).astype(int), 0, W - 1)
+    yi = np.clip(np.round(y).astype(int), 0, H - 1)
+    win = 1  # sample a small window around the centroid, not just one pixel
+    sat_peak = np.array([
+        chan_max[max(0, yc - win):yc + win + 1, max(0, xc - win):xc + win + 1].max()
+        for xc, yc in zip(xi, yi)
+    ])
+
     keep = ((x > edge) & (x < W - edge) & (y > edge) & (y < H - edge)
-            & (peak + med < sat))
+            & (sat_peak < sat))
     x, y = x[keep], y[keep]
     if len(x) == 0:
         raise PCCError("no stars survive edge/saturation cuts")

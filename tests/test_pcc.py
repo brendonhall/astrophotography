@@ -140,3 +140,40 @@ def test_detect_stars_finds_injected_and_measures_color():
     red = stars[int(np.argmin(d))]
     assert red["r"] / red["g"] > 1.3
     assert red["b"] / red["g"] < 0.9
+
+
+def test_detect_stars_rejects_single_channel_saturation():
+    rng = np.random.RandomState(3)
+    img = rng.normal(1000.0, 5.0, (120, 120, 3))
+    # Saturated in R ONLY: R pixel value (~66000) sits well above `sat`
+    # (60000), while G/B stay low. Luminance (mean-of-RGB) peak is only
+    # ~(66000+1500+1500)/3 ~= 23000, i.e. it would NOT be caught by a
+    # luminance-based saturation check -- this is the bug under test.
+    _inject_star(img, 40, 40, (65000, 500, 500))
+    # A normal, unsaturated star elsewhere that must still be detected.
+    _inject_star(img, 80, 80, (1500, 1500, 1500))
+
+    stars = pcc.detect_stars(img, fwhm=3.0, threshold_sigma=5.0)
+
+    d_sat = (stars["x"] - 40) ** 2 + (stars["y"] - 40) ** 2
+    assert np.all(d_sat > 25)  # no surviving detection near the saturated star
+
+    d_ok = (stars["x"] - 80) ** 2 + (stars["y"] - 80) ** 2
+    assert np.min(d_ok) < 4  # the normal star still survives
+
+
+def test_detect_stars_rejects_near_edge():
+    rng = np.random.RandomState(4)
+    img = rng.normal(1000.0, 5.0, (120, 120, 3))
+    # Within `edge` (default 20) pixels of the left border -- must be rejected.
+    _inject_star(img, 10, 60, (2000, 1500, 1000))
+    # A normal star far from any edge that must still be detected.
+    _inject_star(img, 60, 60, (2000, 1500, 1000))
+
+    stars = pcc.detect_stars(img, fwhm=3.0, threshold_sigma=5.0)
+
+    d_edge = (stars["x"] - 10) ** 2 + (stars["y"] - 60) ** 2
+    assert np.all(d_edge > 25)  # no surviving detection near the edge star
+
+    d_ok = (stars["x"] - 60) ** 2 + (stars["y"] - 60) ** 2
+    assert np.min(d_ok) < 4  # the normal star still survives
