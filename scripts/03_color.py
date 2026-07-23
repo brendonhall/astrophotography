@@ -13,9 +13,9 @@ is the more advanced next step; noted for later.
 """
 import numpy as np
 import astrolib as al
+import pcc
 
 PEDESTAL = 0.10 * 65535.0
-GAIN_CLAMP = (0.85, 1.15)
 REF_BP_RP = 0.82
 MIN_STARS = 30
 
@@ -60,7 +60,6 @@ def main(infile, outfile, original=None, no_pcc=False):
     # 2. color balance: PCC from the original (WCS-bearing) stack, else gentle WB
     if original and not no_pcc:
         try:
-            import pcc
             oimg, ohdr = al.load(original)
             gains, report = pcc.photometric_calibration(
                 oimg, ohdr, ref_bp_rp=REF_BP_RP, min_stars=MIN_STARS)
