@@ -10,12 +10,20 @@ from astropy.io import fits
 # ---------- I/O ----------
 
 def load(path):
-    """Return (img (H,W,3) float32 ADU, header)."""
+    """Return (img (H,W,3) float32 ADU, header).
+
+    Siril writes 32-bit stacked masters normalized to [0,1], but this pipeline
+    works in ADU (~0..65535). A normalized-float input (max <= 1.5) is scaled up
+    so Siril re-stacks feed the pipeline directly with no manual conversion.
+    Integer/ADU stacks (max in the thousands) are left untouched.
+    """
     with fits.open(path) as hdul:
         hdr = hdul[0].header
         data = hdul[0].data.astype(np.float32)
     if data.ndim == 3 and data.shape[0] == 3:
         data = np.moveaxis(data, 0, -1)  # (3,H,W) -> (H,W,3)
+    if data.size and float(np.nanmax(data)) <= 1.5:
+        data = data * 65535.0
     return data, hdr
 
 

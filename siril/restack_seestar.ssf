@@ -30,5 +30,12 @@ register light
 #    background/scale across subs before combining.
 stack r_light rej 3 3 -norm=addscale -output_norm -out=../restacked
 
+# 4. Plate-solve the master (uses header RA/DEC + focal + pixel size) so the
+#    pipeline's Gaia photometric color calibration can cross-match. Needs
+#    internet; if it fails the un-solved master is still produced (PCC then
+#    falls back to gentle white balance).
 cd ..
+load restacked
+platesolve
+save restacked
 close

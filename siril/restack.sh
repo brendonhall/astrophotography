@@ -39,7 +39,10 @@ OUT="$REPO/data/${NAME}.fit"
 
 echo ">> Restacking subs in: $SUBDIR"
 echo ">> Using script:       $SCRIPT"
-"$SIRIL" -d "$SUBDIR" -s "$REPO/$SCRIPT"
+# Tolerate a non-zero exit (e.g. plate-solve failing offline): the sigma-clip
+# stack is written before the solve, so we still move the master if it exists.
+"$SIRIL" -d "$SUBDIR" -s "$REPO/$SCRIPT" \
+  || echo ">> warning: Siril exited non-zero (plate-solve may have failed); checking for stack output"
 
 # The .ssf writes restacked.fit into the sub-folder; move it into data/.
 if [[ -f "$SUBDIR/restacked.fit" ]]; then
