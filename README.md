@@ -52,6 +52,22 @@ image. Each numbered step reads a FITS and writes a FITS plus a preview PNG.
 `scripts/astrolib.py` holds shared helpers (FITS I/O, STF autostretch, source
 masking). Tuning parameters live as constants at the top of each step script.
 
+### Starless galaxy finish (optional)
+
+An alternate finishing path that recreates the SetiAstroSuitePro galaxy
+workflow: remove stars, sharpen/denoise the starless galaxy, then screen the
+stars back in. Runs steps 01-04 unchanged, then `05b_starless_finish.py`
+instead of `05_finish.py`.
+
+    make run-starless FITS="data/<master>.fit" V=starless
+
+Prerequisite: the **StarNet2 CLI** (Apple Silicon build) installed at
+`~/StarNet2/` (or point `$STARNET2_CLI` at the binary). It removes stars with
+a CoreML model; `05b` uses its `--unscreen` output so the star layer recombines
+exactly. Outputs the finished image plus `_starless.png` and `_starlayer.png`
+diagnostics. Sharpening is gentle by default and can be disabled with
+`--no-sharpen` (pass through `scripts/05b_starless_finish.py` directly).
+
 ## Re-stacking subframes
 
 The SeeStar exports only its on-device stack, whose built-in rejection can leave

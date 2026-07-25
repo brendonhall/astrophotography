@@ -18,6 +18,16 @@ if [[ ! -x "$PY" ]]; then
   exit 1
 fi
 
+STARLESS=0
+ARGS=()
+for a in "$@"; do
+  case "$a" in
+    --starless) STARLESS=1 ;;
+    *) ARGS+=("$a") ;;
+  esac
+done
+set -- "${ARGS[@]}"
+
 IN="${1:?usage: run_pipeline.sh <input.fit> [version-label]}"
 # Resolve to an absolute path (we cd into scripts/ below, so relative paths break).
 case "$IN" in /*) ;; *) IN="$PWD/$IN" ;; esac
@@ -33,5 +43,11 @@ echo ">> 02 background"; "$PY" 02_background.py "$WORK/01_crop.fit" "$WORK/02_bg
 echo ">> 03 color";      "$PY" 03_color.py      "$WORK/02_bg.fit"   "$WORK/03_color.fit" --original "$IN" \
                             --diagnostic "$ROOT/output/${NAME}_${LABEL}_pcc_diagnostic.png"
 echo ">> 04 stretch";    "$PY" 04_stretch.py    "$WORK/03_color.fit" "$WORK/04_stretch.fit"
-echo ">> 05 finish";     "$PY" 05_finish.py     "$WORK/04_stretch.fit" "$OUTBASE"
+if [[ "$STARLESS" == "1" ]]; then
+  echo ">> 05b starless finish"
+  "$PY" 05b_starless_finish.py "$WORK/04_stretch.fit" "$OUTBASE"
+else
+  echo ">> 05 finish"
+  "$PY" 05_finish.py "$WORK/04_stretch.fit" "$OUTBASE"
+fi
 echo ">> done -> output/${NAME}_${LABEL}.{tif,png}"
