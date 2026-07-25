@@ -26,7 +26,7 @@ for a in "$@"; do
     *) ARGS+=("$a") ;;
   esac
 done
-set -- "${ARGS[@]}"
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 
 IN="${1:?usage: run_pipeline.sh <input.fit> [version-label]}"
 # Resolve to an absolute path (we cd into scripts/ below, so relative paths break).
