@@ -89,6 +89,29 @@ The wrapper writes a **uniquely named** FITS and refuses to overwrite an existin
 one. `restack_seestar.ssf` handles color subs; `restack_seestar_cfa.ssf` debayers
 raw Bayer subs first. Rejection defaults to winsorized sigma-clip (`rej 3 3`).
 
+### Siril GUI gotchas (color calibration)
+
+Two things that make Siril's Photometric Color Calibration (PCC) look broken when
+it isn't:
+
+- **Linked vs. unlinked autostretch.** Siril's *display* Autostretch has a
+  linked/unlinked toggle. **Unlinked** (per-channel) normalizes each of R/G/B to
+  its own range, which mathematically **cancels any constant per-channel scaling**
+  — so a color-calibration change is *invisible* in the preview, and PCC looks
+  like it did nothing. Switch the display to **linked** to judge color. (This is
+  a display setting only; it never changes the pixels.)
+- **PCC does two separate jobs.** (1) **White-balance factors** (Siril's `K0/K1/K2`)
+  correct *star colors* so a sun-like star reads white; (2) **background
+  neutralization** (`B0/B1/B2`) flattens the *background* color. Don't judge PCC
+  by "did the background change" — a raw SeeStar background can be blue- or
+  green-dominant, and the factors alone can shift it either way. Judge success by
+  **star colors after stretching**: a natural spread of white / blue-white /
+  yellow-orange stars, not a uniform tint. The Siril console also prints how many
+  stars matched and the factors applied — that's the objective confirmation PCC ran.
+
+Note this is Siril-GUI behavior; the pipeline's own PCC (`03_color.py`, below)
+is a separate implementation.
+
 ## Layout
 
 ```
