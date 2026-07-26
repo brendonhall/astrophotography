@@ -2,25 +2,36 @@
 """Step 5b - Starless galaxy finish (alternative to 05_finish).
 
 Recreates the SetiAstroSuitePro galaxy workflow in Python: remove stars with
-the StarNet2 CLI, sharpen + denoise the starless galaxy, then screen the star
-layer back in. Operates on the stretched (nonlinear) image from step 04. See
+the StarNet2 CLI, denoise the starless galaxy, then screen the star layer
+back in. Operates on the stretched (nonlinear) image from step 04. See
 docs/superpowers/specs/2026-07-25-starless-galaxy-workflow-design.md.
+
+Denoise is background-aware (mask-based): with no stars left to protect, the
+empty sky is denoised hard while a feathered luminance mask keeps the galaxy
+itself gentle/sharp. See astrolib.masked_denoise. Sharpening defaults OFF
+(SHARPEN_AMOUNT=0.0) since the experiment showed sharpening the sky just adds
+grain; set SHARPEN_AMOUNT>0 to re-enable it (it applies globally, sky and
+galaxy alike).
 """
 import sys
 import numpy as np
 import astrolib as al
 import starnet
 
-SHARPEN_AMOUNT = 0.5   # unsharp amount on starless luma (0 = off)
-SHARPEN_RADIUS = 2.0   # unsharp gaussian radius (px)
-LUMA_DENOISE = 0.012   # TV-denoise weight on luminance
-CHROMA_DENOISE = 4.0   # gaussian sigma on chroma (px)
-SATURATION = 1.20      # HSV saturation multiplier
-STRIDE = 256           # StarNet2 tile stride
+SHARPEN_AMOUNT = 0.0    # unsharp amount on starless luma (0 = off, default)
+SHARPEN_RADIUS = 2.0    # unsharp gaussian radius (px)
+BG_LUMA_DENOISE = 0.06  # TV-denoise weight on background luminance (hard)
+BG_CHROMA_DENOISE = 10.0  # gaussian sigma on background chroma (px, hard)
+GAL_LUMA_DENOISE = 0.010  # TV-denoise weight on galaxy luminance (gentle)
+GAL_CHROMA_DENOISE = 3.0  # gaussian sigma on galaxy chroma (px, gentle)
+MASK_FEATHER = 25.0     # gaussian feather (px) on the galaxy/background mask
+SATURATION = 1.20       # HSV saturation multiplier
+STRIDE = 256            # StarNet2 tile stride
 
 
-def process_starless(starless01, sharpen=True):
-    """Sharpen (luma) then denoise + saturate a [0,1] starless RGB image.
+def process_starless(starless01, sharpen=False):
+    """Sharpen (luma, optional) then background-aware denoise + saturate a
+    [0,1] starless RGB image.
 
     SCNR is off here: the green cast is handled upstream in step 03, and the
     star layer (added back later) is where residual green usually lives.
@@ -28,8 +39,12 @@ def process_starless(starless01, sharpen=True):
     img = starless01
     if sharpen and SHARPEN_AMOUNT > 0:
         img = al.unsharp_luma(img, amount=SHARPEN_AMOUNT, radius=SHARPEN_RADIUS)
-    return al.finish(img, saturation=SATURATION, luma_denoise=LUMA_DENOISE,
-                     chroma_denoise=CHROMA_DENOISE, scnr=False)
+    img = al.masked_denoise(img, bg_luma=BG_LUMA_DENOISE, bg_chroma=BG_CHROMA_DENOISE,
+                            gal_luma=GAL_LUMA_DENOISE, gal_chroma=GAL_CHROMA_DENOISE,
+                            feather=MASK_FEATHER)
+    # saturation only (denoise already done above)
+    return al.finish(img, saturation=SATURATION, luma_denoise=0, chroma_denoise=0,
+                     scnr=False)
 
 
 def main(infile, outfile_base, stride=STRIDE, no_sharpen=False):

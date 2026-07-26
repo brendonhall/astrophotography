@@ -42,9 +42,13 @@ def test_main_recombines_and_writes_outputs(tmp_path, monkeypatch):
 def test_no_sharpen_skips_unsharp(tmp_path):
     mod = _load_module()
     starless = np.full((32, 32, 3), 0.3)
-    # with no sharpen, process_starless == finish(scnr off) of the input
+    # with no sharpen, process_starless == masked_denoise then saturation-only finish
     got = mod.process_starless(starless, sharpen=False)
-    exp = al.finish(starless, saturation=mod.SATURATION,
-                    luma_denoise=mod.LUMA_DENOISE,
-                    chroma_denoise=mod.CHROMA_DENOISE, scnr=False)
+    exp = al.finish(
+        al.masked_denoise(starless, bg_luma=mod.BG_LUMA_DENOISE,
+                          bg_chroma=mod.BG_CHROMA_DENOISE,
+                          gal_luma=mod.GAL_LUMA_DENOISE,
+                          gal_chroma=mod.GAL_CHROMA_DENOISE,
+                          feather=mod.MASK_FEATHER),
+        saturation=mod.SATURATION, luma_denoise=0, chroma_denoise=0, scnr=False)
     assert np.allclose(got, exp)

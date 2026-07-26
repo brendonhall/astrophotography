@@ -65,8 +65,15 @@ Prerequisite: the **StarNet2 CLI** (Apple Silicon build) installed at
 `~/StarNet2/` (or point `$STARNET2_CLI` at the binary). It removes stars with
 a CoreML model; `05b` uses its `--unscreen` output so the star layer recombines
 exactly. Outputs the finished image plus `_starless.png` and `_starlayer.png`
-diagnostics. Sharpening is gentle by default and can be disabled with
-`--no-sharpen` (pass through `scripts/05b_starless_finish.py` directly).
+diagnostics.
+
+The starless layer is denoised with a background-aware (masked) denoise: with
+no stars left to protect, the empty sky is smoothed aggressively while a
+feathered luminance mask keeps the galaxy itself gentle and sharp (see
+`astrolib.masked_denoise`). Sharpening now defaults **off** — the experiment
+showed sharpening the sky just adds grain — set `SHARPEN_AMOUNT > 0` in
+`scripts/05b_starless_finish.py` to re-enable it (it applies globally, sky
+and galaxy alike).
 
 ## Re-stacking subframes
 

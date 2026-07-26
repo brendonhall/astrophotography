@@ -143,6 +143,24 @@ def screen(a, b):
     return np.clip(1.0 - (1.0 - a) * (1.0 - b), 0.0, 1.0)
 
 
+def masked_denoise(img01, bg_luma=0.06, bg_chroma=10.0, gal_luma=0.010,
+                   gal_chroma=3.0, feather=25.0, mask_k=2.0, mask_dilate=8):
+    """Denoise the background hard and the galaxy gently, blended by a feathered
+    source mask. Because a starless image has no stars to protect, the empty sky
+    can be denoised aggressively while a luminance mask keeps the galaxy sharp.
+    Returns a [0,1] RGB image (no saturation change - caller applies that)."""
+    from scipy import ndimage
+    img = np.clip(img01, 0.0, 1.0)
+    gentle = finish(img, saturation=1.0, luma_denoise=gal_luma,
+                    chroma_denoise=gal_chroma, scnr=False)
+    heavy = finish(img, saturation=1.0, luma_denoise=bg_luma,
+                   chroma_denoise=bg_chroma, scnr=False)
+    m = source_mask(img.mean(axis=2), k=mask_k, dilate=mask_dilate).astype(float)
+    m = np.clip(ndimage.gaussian_filter(m, feather), 0.0, 1.0)
+    blended = m[..., None] * gentle + (1.0 - m[..., None]) * heavy
+    return np.clip(blended, 0.0, 1.0)
+
+
 def unsharp_luma(img01, amount=0.5, radius=2.0):
     """Unsharp-mask the luminance of a [0,1] RGB image; hue preserved.
 
