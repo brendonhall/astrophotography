@@ -40,7 +40,7 @@ OUTBASE="$ROOT/output/${NAME}_${LABEL}"
 cd "$HERE"
 echo ">> 01 crop";       "$PY" 01_crop.py       "$IN"               "$WORK/01_crop.fit"
 echo ">> 02 background"; "$PY" 02_background.py "$WORK/01_crop.fit" "$WORK/02_bg.fit"
-echo ">> 03 color";      "$PY" 03_color.py      "$WORK/02_bg.fit"   "$WORK/03_color.fit" --original "$IN" \
+echo ">> 03 color";      "$PY" 03_color.py      "$WORK/02_bg.fit"   "$WORK/03_color.fit" \
                             --diagnostic "$ROOT/output/${NAME}_${LABEL}_pcc_diagnostic.png"
 echo ">> 04 stretch";    "$PY" 04_stretch.py    "$WORK/03_color.fit" "$WORK/04_stretch.fit"
 if [[ "$STARLESS" == "1" ]]; then
