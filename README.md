@@ -52,6 +52,94 @@ image. Each numbered step reads a FITS and writes a FITS plus a preview PNG.
 `scripts/astrolib.py` holds shared helpers (FITS I/O, STF autostretch, source
 masking). Tuning parameters live as constants at the top of each step script.
 
+### Starless galaxy finish (optional)
+
+An alternate finishing path that recreates the SetiAstroSuitePro galaxy
+workflow: remove stars, sharpen/denoise the starless galaxy, then screen the
+stars back in. Runs steps 01-04 unchanged, then `05b_starless_finish.py`
+instead of `05_finish.py`.
+
+    make run-starless FITS="data/<master>.fit" V=starless
+
+Prerequisite: the **StarNet2 CLI** (Apple Silicon build) installed at
+`~/StarNet2/` (or point `$STARNET2_CLI` at the binary). It removes stars with
+a CoreML model; `05b` uses its `--unscreen` output so the star layer recombines
+exactly. Outputs the finished image plus `_starless.png` and `_starlayer.png`
+diagnostics.
+
+The starless layer is denoised with a background-aware (masked) denoise: with
+no stars left to protect, the empty sky is smoothed aggressively while a
+feathered luminance mask keeps the galaxy itself gentle and sharp (see
+`astrolib.masked_denoise`). Sharpening now defaults **off** — the experiment
+showed sharpening the sky just adds grain — set `SHARPEN_AMOUNT > 0` in
+`scripts/05b_starless_finish.py` to re-enable it (it applies globally, sky
+and galaxy alike).
+
+### Cosmic Clarity denoise (optional)
+
+AI denoise via SetiAstro's **Cosmic Clarity**, run as a native CLI. The SASpro
+GUI's bundled PyTorch fails to import on this Mac (frozen-app packaging bug), so
+Cosmic Clarity is installed standalone and driven by a wrapper:
+
+    tools/ccdenoise.sh <input> <output> [strength] [mode]
+    #  strength  0..1                        (default 0.5)
+    #  mode      luminance | full | separate (default luminance)
+    #  'full' also denoises chroma (color) noise — use it when the background
+    #  has colored speckle (SeeStar OSC data usually does).
+
+Feed a **stretched** (nonlinear) image — tif/fits/png; the CLI has no linear
+flag. Apply it **late**, after color calibration and stretch (e.g. on a PCC'd
+TIFF exported from Siril). Output is never overwritten. Runs on the Apple GPU
+(MPS), ~1 min for a full-frame S30 image.
+
+**One-time install:** clone `setiastro/cosmicclarity` to `~/CosmicClarity`, make
+a native arm64 venv (`python3.13 -m venv .venv`), then
+`pip install torch torchvision numpy tifffile astropy Pillow PyQt6 opencv-python-headless xisf lz4 zstandard`
+(the repo's `requirements.txt` is incomplete). Model weights are **not** in the
+repo — fetch from the GitHub releases, e.g.
+`gh release download Linux --repo setiastro/cosmicclarity --pattern deep_denoise_cnn_AI3_6.pth --dir ~/CosmicClarity`.
+Point `$COSMIC_CLARITY_DIR` at the install if it lives elsewhere.
+
+### Portfolio finish
+
+`tools/portfolio_finish.py` turns a **color-calibrated, stretched** image (e.g. a
+PCC'd 16-bit TIFF exported from Siril) into a finished portfolio image in one
+command. By default it reproduces the **M101 "v1"** look:
+
+    Cosmic Clarity full denoise  ->  deepen + neutralize sky
+      ->  global saturation (1.6)  ->  mild mid-contrast
+
+Run it with the Cosmic Clarity venv (it needs `tifffile`/`cv2`/`starnet`):
+
+    ~/CosmicClarity/.venv/bin/python tools/portfolio_finish.py <in> <out> [opts]
+
+    # v1 recipe (full denoise + polish), full frame — the default:
+    portfolio_finish.py pcc.tif  M101_finish.tif
+    # input already denoised -> skip the denoise stage:
+    portfolio_finish.py denoised.tif out.tif --denoise none
+    # star-reduced + centered 1500 px portrait crop:
+    portfolio_finish.py pcc.tif out.tif --star-reduce 0.5 --crop 1500
+
+Options: `--denoise full|luminance|none` (default full), `--denoise-strength`
+(0.5), `--saturation` (1.6), `--black-offset` (0.02, how far below the sky median
+to set the black point), `--star-reduce F` (0=off; keeps star brightness F, and
+switches saturation to a signal-masked version with chroma smoothing so the sky
+stays clean), `--crop N` (centered N×N). Output is never overwritten; a
+downsampled `_preview.png` is written alongside.
+
+**Full end-to-end sequence** (what produced the M101 portfolio image):
+
+1. **Capture** — SeeStar S30 Pro, enable *Save each frame in enhancing*; here
+   367 × 30 s subs (IRCUT, gain 200) ≈ 3 hr.
+2. **Re-stack** — `./siril/restack.sh "data/<target>-sub" <name>` (or the
+   SeeStar preprocessing script): register + winsorized sigma-clip + plate-solve.
+3. **Calibrate & stretch (Siril GUI)** — Background Extraction → Photometric
+   Color Calibration → nonlinear stretch → export a **16-bit TIFF**.
+4. **Finish** — `portfolio_finish.py <that TIFF> <out.tif>` (denoise + polish).
+
+Steps 1–3 are per-target manual/GUI work; step 4 is the repeatable one-command
+finish and is verified to reproduce the M101 v1 master pixel-for-pixel.
+
 ## Re-stacking subframes
 
 The SeeStar exports only its on-device stack, whose built-in rejection can leave
@@ -117,6 +205,7 @@ is a separate implementation.
 ```
 scripts/        pipeline code (tracked)
 siril/          Siril .ssf scripts + wrapper for re-stacking subframes (tracked)
+tools/          external-tool wrappers + finishing (ccdenoise, portfolio_finish) (tracked)
 data/           stacked FITS exports (local only, git-ignored)
 output/         processed TIFF/PNG (local only, git-ignored)
 work/           intermediate stage files (local only, git-ignored)

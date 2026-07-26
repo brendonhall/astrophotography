@@ -127,3 +127,53 @@ def finish(img01, saturation=1.20, luma_denoise=0.012, chroma_denoise=4.0, scnr=
         hsv[..., 1] = np.clip(hsv[..., 1] * saturation, 0.0, 1.0)
         img = hsv_to_rgb(hsv)
     return img
+
+
+# ---------- layer blending / sharpening (starless workflow) ----------
+
+def screen(a, b):
+    """Screen blend of two [0,1] arrays: 1 - (1-a)(1-b), clipped to [0,1].
+
+    Screen is the recombination used to add a star layer back over a
+    processed starless image. It is the exact inverse of StarNet2's
+    --unscreen output, so screen(starless, stars) reconstructs the source.
+    """
+    a = np.clip(a, 0.0, 1.0)
+    b = np.clip(b, 0.0, 1.0)
+    return np.clip(1.0 - (1.0 - a) * (1.0 - b), 0.0, 1.0)
+
+
+def masked_denoise(img01, bg_luma=0.06, bg_chroma=10.0, gal_luma=0.010,
+                   gal_chroma=3.0, feather=25.0, mask_k=2.0, mask_dilate=8):
+    """Denoise the background hard and the galaxy gently, blended by a feathered
+    source mask. Because a starless image has no stars to protect, the empty sky
+    can be denoised aggressively while a luminance mask keeps the galaxy sharp.
+    Returns a [0,1] RGB image (no saturation change - caller applies that)."""
+    from scipy import ndimage
+    img = np.clip(img01, 0.0, 1.0)
+    gentle = finish(img, saturation=1.0, luma_denoise=gal_luma,
+                    chroma_denoise=gal_chroma, scnr=False)
+    heavy = finish(img, saturation=1.0, luma_denoise=bg_luma,
+                   chroma_denoise=bg_chroma, scnr=False)
+    m = source_mask(img.mean(axis=2), k=mask_k, dilate=mask_dilate).astype(float)
+    m = np.clip(ndimage.gaussian_filter(m, feather), 0.0, 1.0)
+    blended = m[..., None] * gentle + (1.0 - m[..., None]) * heavy
+    return np.clip(blended, 0.0, 1.0)
+
+
+def unsharp_luma(img01, amount=0.5, radius=2.0):
+    """Unsharp-mask the luminance of a [0,1] RGB image; hue preserved.
+
+    Sharpens detail without shifting color: sharpen the luma channel, then
+    rescale RGB by the per-pixel luma ratio so chroma rides along. amount<=0
+    returns a clipped copy (an explicit no-op for the --no-sharpen path).
+    """
+    from scipy import ndimage
+    img = np.clip(img01, 0.0, 1.0).astype(np.float64)
+    if amount <= 0:
+        return img.copy()
+    lum = img.mean(axis=2)
+    blur = ndimage.gaussian_filter(lum, radius)
+    sharp = np.clip(lum + amount * (lum - blur), 0.0, 1.0)
+    ratio = np.divide(sharp, lum, out=np.ones_like(lum), where=lum > 1e-6)
+    return np.clip(img * ratio[..., None], 0.0, 1.0)

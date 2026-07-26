@@ -2,7 +2,7 @@
 VENV := .venv
 PY   := $(VENV)/bin/python
 
-.PHONY: setup inspect run clean help test
+.PHONY: setup inspect run run-starless clean help test
 
 test:
 	$(PY) -m pytest -q
@@ -11,6 +11,7 @@ help:
 	@echo "make setup                  - create .venv and install requirements"
 	@echo "make inspect FITS=path      - print FITS header + stats"
 	@echo "make run FITS=path [V=label]- run full pipeline -> output/<name>_<label>"
+	@echo "make run-starless FITS=path [V=label] - full pipeline w/ StarNet2 starless finish"
 	@echo "make clean                  - remove work/ intermediates"
 
 setup:
@@ -26,6 +27,9 @@ inspect:
 
 run:
 	scripts/run_pipeline.sh "$(FITS)" $(V)
+
+run-starless:
+	scripts/run_pipeline.sh "$(FITS)" $(V) --starless
 
 clean:
 	rm -rf work
