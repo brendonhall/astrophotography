@@ -75,6 +75,31 @@ showed sharpening the sky just adds grain — set `SHARPEN_AMOUNT > 0` in
 `scripts/05b_starless_finish.py` to re-enable it (it applies globally, sky
 and galaxy alike).
 
+### Cosmic Clarity denoise (optional)
+
+AI denoise via SetiAstro's **Cosmic Clarity**, run as a native CLI. The SASpro
+GUI's bundled PyTorch fails to import on this Mac (frozen-app packaging bug), so
+Cosmic Clarity is installed standalone and driven by a wrapper:
+
+    tools/ccdenoise.sh <input> <output> [strength] [mode]
+    #  strength  0..1                        (default 0.5)
+    #  mode      luminance | full | separate (default luminance)
+    #  'full' also denoises chroma (color) noise — use it when the background
+    #  has colored speckle (SeeStar OSC data usually does).
+
+Feed a **stretched** (nonlinear) image — tif/fits/png; the CLI has no linear
+flag. Apply it **late**, after color calibration and stretch (e.g. on a PCC'd
+TIFF exported from Siril). Output is never overwritten. Runs on the Apple GPU
+(MPS), ~1 min for a full-frame S30 image.
+
+**One-time install:** clone `setiastro/cosmicclarity` to `~/CosmicClarity`, make
+a native arm64 venv (`python3.13 -m venv .venv`), then
+`pip install torch torchvision numpy tifffile astropy Pillow PyQt6 opencv-python-headless xisf lz4 zstandard`
+(the repo's `requirements.txt` is incomplete). Model weights are **not** in the
+repo — fetch from the GitHub releases, e.g.
+`gh release download Linux --repo setiastro/cosmicclarity --pattern deep_denoise_cnn_AI3_6.pth --dir ~/CosmicClarity`.
+Point `$COSMIC_CLARITY_DIR` at the install if it lives elsewhere.
+
 ## Re-stacking subframes
 
 The SeeStar exports only its on-device stack, whose built-in rejection can leave
@@ -140,6 +165,7 @@ is a separate implementation.
 ```
 scripts/        pipeline code (tracked)
 siril/          Siril .ssf scripts + wrapper for re-stacking subframes (tracked)
+tools/          wrappers for external tools (Cosmic Clarity denoise) (tracked)
 data/           stacked FITS exports (local only, git-ignored)
 output/         processed TIFF/PNG (local only, git-ignored)
 work/           intermediate stage files (local only, git-ignored)
