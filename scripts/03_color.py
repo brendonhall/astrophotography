@@ -4,7 +4,6 @@
 WCS now travels in the payload, so PCC measures on this step's own input; the
 optional --original arg becomes a 'reference' frame override.
 """
-import sys
 import astrolib as al
 from stages.image import Space
 from stages.io import load_fits, save_fits
@@ -17,9 +16,10 @@ def main(infile, outfile, original=None, no_pcc=False, diagnostic=None):
     inputs = {"image": img}
     if original:
         inputs["reference"] = load_fits(original, Space.LINEAR_ADU)
+    diag = diagnostic or outfile.replace(".fit", "_pcc_diagnostic.png")
     out = ColorCalibrateStage().run(inputs, {
         "ref_bp_rp": REF_BP_RP, "min_stars": MIN_STARS,
-        "no_pcc": no_pcc, "diagnostic_path": diagnostic or ""})["image"]
+        "no_pcc": no_pcc, "diagnostic_path": diag})["image"]
     save_fits(outfile, out)
     al.save_preview(outfile.replace(".fit", "_preview.png"), img_adu=out.pixels)
     print(f"wrote {outfile}")

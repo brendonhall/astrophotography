@@ -1,6 +1,8 @@
 import numpy as np
+import pytest
 from astropy.io import fits
 import stages
+from stages.base import StageError
 from stages.image import Image, Space
 from stages.geometry import CropStage
 
@@ -25,3 +27,10 @@ def test_crop_trims_and_shifts_wcs():
 def test_crop_registered():
     assert stages.get("crop") is CropStage
     assert any(s["id"] == "crop" for s in stages.list_stages())
+
+
+def test_crop_margin_too_large_raises():
+    img = Image(np.arange(20 * 24 * 3, dtype=np.float32).reshape(20, 24, 3),
+                Space.LINEAR_ADU, _hdr())
+    with pytest.raises(StageError):
+        CropStage().run({"image": img}, {"margin": 15})

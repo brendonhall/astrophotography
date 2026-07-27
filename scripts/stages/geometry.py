@@ -15,6 +15,15 @@ class CropStage(Stage):
     PARAMS = [Param("margin", "int", 40, "Margin", "Pixels trimmed per side",
                     min=0, max=2000, step=1, unit="px")]
 
+    def check(self, inputs, params):
+        errs = super().check(inputs, params)
+        img = inputs.get("image")
+        m = params.get("margin", 0)
+        if img is not None and 2 * m >= min(img.pixels.shape[0], img.pixels.shape[1]):
+            errs.append(f"margin {m} too large for image "
+                        f"{img.pixels.shape[1]}x{img.pixels.shape[0]}")
+        return errs
+
     def apply(self, inputs, params):
         img = inputs["image"]
         m = params["margin"]

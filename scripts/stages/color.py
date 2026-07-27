@@ -69,8 +69,6 @@ class ColorCalibrateStage(Stage):
             if params["diagnostic_path"]:
                 pcc.save_diagnostic(report, params["diagnostic_path"])
             out = pcc.apply_gains(neutral, gains, _PEDESTAL)
-        except pcc.PCCError:
-            out = _gentle_white_balance(neutral, _PEDESTAL)
         except Exception:
             out = _gentle_white_balance(neutral, _PEDESTAL)
         return {"image": img.replace(pixels=np.asarray(out, dtype=img.pixels.dtype))}
