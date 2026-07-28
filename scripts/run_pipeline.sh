@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
-# Run the full M101-style processing pipeline on a stacked FITS.
+# Run the pipeline via the flow executor (built-in linear/starless graphs).
 #
-# Usage:
-#   scripts/run_pipeline.sh <input.fit> [version-label]
-#
-# The final image is always written under a UNIQUE, versioned name
-# (output/<input>_<label>.{tif,png}); if no label is given a timestamp is used,
-# so runs never overwrite each other. Intermediate stage files land in work/.
+# Usage: scripts/run_pipeline.sh <input.fit> [version-label] [--starless]
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -28,26 +23,13 @@ for a in "$@"; do
 done
 set -- "${ARGS[@]+"${ARGS[@]}"}"
 
-IN="${1:?usage: run_pipeline.sh <input.fit> [version-label]}"
-# Resolve to an absolute path (we cd into scripts/ below, so relative paths break).
+IN="${1:?usage: run_pipeline.sh <input.fit> [version-label] [--starless]}"
 case "$IN" in /*) ;; *) IN="$PWD/$IN" ;; esac
 LABEL="${2:-$(date +%Y%m%d-%H%M%S)}"
-NAME="$(basename "${IN%.*}" | tr ' ' '_')"
 
-WORK="$ROOT/work"; mkdir -p "$WORK" "$ROOT/output"
-OUTBASE="$ROOT/output/${NAME}_${LABEL}"
+FLOW=linear
+[[ "$STARLESS" == "1" ]] && FLOW=starless
 
-cd "$HERE"
-echo ">> 01 crop";       "$PY" 01_crop.py       "$IN"               "$WORK/01_crop.fit"
-echo ">> 02 background"; "$PY" 02_background.py "$WORK/01_crop.fit" "$WORK/02_bg.fit"
-echo ">> 03 color";      "$PY" 03_color.py      "$WORK/02_bg.fit"   "$WORK/03_color.fit" \
-                            --diagnostic "$ROOT/output/${NAME}_${LABEL}_pcc_diagnostic.png"
-echo ">> 04 stretch";    "$PY" 04_stretch.py    "$WORK/03_color.fit" "$WORK/04_stretch.fit"
-if [[ "$STARLESS" == "1" ]]; then
-  echo ">> 05b starless finish"
-  "$PY" 05b_starless_finish.py "$WORK/04_stretch.fit" "$OUTBASE"
-else
-  echo ">> 05 finish"
-  "$PY" 05_finish.py "$WORK/04_stretch.fit" "$OUTBASE"
-fi
-echo ">> done -> output/${NAME}_${LABEL}.{tif,png}"
+cd "$ROOT"                      # so output/ and work/ resolve at repo root
+echo ">> flow run --builtin $FLOW"
+PYTHONPATH="$HERE" exec "$PY" -m flow run --builtin "$FLOW" --input "$IN" --label "$LABEL"

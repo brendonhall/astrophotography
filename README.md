@@ -109,6 +109,68 @@ given) — so PCC runs on whatever WCS-bearing header is attached to its input,
 which is why the pipeline no longer needs a separate `--original` pass-through
 of the raw stacked file (see **Photometric color calibration** below).
 
+### The `flow/` package (graph executor)
+
+`scripts/flow/` is a headless DAG executor that runs `stages/` building blocks
+wired into an arbitrary graph, instead of a fixed numbered chain. It's the
+engine behind `run_pipeline.sh`, and the foundation a future node-graph GUI
+would sit on top of.
+
+- **Graph model** (`flow/graph.py`): `Graph(nodes, edges, name)`, where each
+  `Node(id, type, params)` names a `stages` registry id plus its param
+  values, and each `Edge(id, Endpoint(node, port), Endpoint(node, port))`
+  wires one node's output port to another's input port. `Graph.to_json()` /
+  `Graph.from_json()` round-trip a graph to plain JSON — a UI-authored graph
+  and a hand-written one are the same shape. Unknown top-level keys (e.g. a
+  future GUI's node positions under `"ui"`) are preserved through a
+  round-trip rather than dropped.
+- **Validation** (`flow/validate.py`): `validate(graph) -> [Issue]` checks
+  structural rules — unknown stage/port ids, duplicate node ids, space
+  mismatches across an edge, missing required inputs, cycles, etc. — as
+  errors, plus a dead-branch warning for nodes with no path to a sink.
+  `flow validate` (see below) exits non-zero if any `Issue` is an error.
+- **Executor** (`flow/executor.py`): `run(graph, input_path, label, work_dir="work", out_dir="output", cache=True) -> RunReport`
+  validates the graph, resolves `{input}`/`{out}`/`{work}` tokens in node
+  params, topologically sorts the nodes, and runs each one's `stages.Stage`
+  in order, threading `Image` payloads along the edges. Nodes with output
+  ports are cache-checked/stored (see below); sink nodes (`export_image`,
+  `preview_sink` — anything with no declared `OUTPUTS`) always run, since
+  they write files rather than pass along a payload. If validation fails, a
+  `FlowError` is raised before any node runs.
+- **Caching** (`flow/cache.py`): each node's outputs are cached under
+  `work/cache/<recipe_hash>__<port>.fits`, content-addressed by
+  `recipe_hash(node, input_hashes)` — a hash of the node's type, its params,
+  and the hashes of *its own inputs* (so changing an upstream node
+  invalidates everything downstream of it, transitively). The `load` source
+  node instead hashes the input file's mtime+size (`file_sig`), so editing
+  the input FITS also busts the cache. Re-running the same graph on the same
+  input reuses every node whose recipe hash is unchanged — only the nodes
+  downstream of an actual change re-run. Pass `--no-cache` to force a full
+  re-run, or `make clean` to blow away `work/` (and the cache with it).
+- **Built-in graphs** (`flow/builtins.py`): `linear_flow()` and
+  `starless_flow()` are Python-built `Graph`s reproducing the standard
+  `01`-`05` chain and the `05b` starless finish, respectively — used by
+  `run_pipeline.sh` via `--builtin`, and as fixtures for the flow test suite.
+- **CLI** (`python -m flow ...`, run with `scripts/` on `PYTHONPATH`):
+  - `flow run (FLOW.json | --builtin linear|starless) --input PATH --label L [--no-cache]`
+    — runs a graph end to end; prints `ran N, cached M` when done.
+  - `flow validate (FLOW.json | --builtin linear|starless)` — runs `validate()`
+    and prints each `Issue`; exits 1 if any is an error, 0 otherwise (also
+    accepts a graph saved from a future GUI).
+  - `flow schema` — prints `stages.list_stages()` as JSON: the full stage
+    palette (ids, ports with their spaces, typed param schemas). This *is*
+    the GUI node-palette contract — anything a node-graph editor needs to
+    populate a palette and generate parameter forms comes from this one call.
+
+**`run_pipeline.sh` is now a thin shim** over this executor: it does the venv
+check and `--starless`/label-arg parsing it always did, then picks
+`--builtin linear` or `--builtin starless` and delegates to
+`python -m flow run`. `make run` / `make run-starless` are unchanged from the
+user's point of view — same args, same versioned `output/` naming — but the
+numbered scripts (`01`-`05b`) are no longer invoked directly; they remain in
+the repo as thin single-stage CLI shims (useful for running one step by hand)
+but the default path through `make run` goes through the flow graph.
+
 ### Starless galaxy finish (optional)
 
 An alternate finishing path that recreates the SetiAstroSuitePro galaxy
