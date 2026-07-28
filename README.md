@@ -52,6 +52,63 @@ image. Each numbered step reads a FITS and writes a FITS plus a preview PNG.
 `scripts/astrolib.py` holds shared helpers (FITS I/O, STF autostretch, source
 masking). Tuning parameters live as constants at the top of each step script.
 
+The numbered scripts above are thin CLI shims: each just loads a FITS, calls
+one `stages.Stage` with a params dict, and saves the result. See **The
+`stages/` package** below for what actually does the work.
+
+### The `stages/` package
+
+The actual processing logic lives in `scripts/stages/`, not in the numbered
+scripts. Each pipeline step is a small, self-contained **Stage** — a class
+with typed inputs, typed outputs, and typed parameters — and the numbered
+scripts (and `05b_starless_finish.py`) are thin shims that wire FITS-in /
+FITS-out CLIs around them. This exists so the same processing steps can
+eventually be driven by something other than a CLI (e.g. a node-graph GUI)
+without rewriting the image math.
+
+- **`Image`** (`stages/image.py`) is the payload that flows between stages:
+  a `pixels` array, a `header` (which carries the WCS, when present), and a
+  `space` tag — `Space.LINEAR_ADU` (crop through color calibration, float ADU)
+  or `Space.NONLINEAR` (after the stretch step, `[0,1]`). Because the header
+  travels with the image end to end, any stage that needs the WCS (PCC) can
+  read it straight off its own input — nothing has to be threaded in
+  separately from the original stacked file. `Image.replace(...)` returns a
+  modified copy (pixels/space/header), keeping stages side-effect-free.
+- **`Stage`** (`stages/base.py`) is the base class every step subclasses:
+  `INPUTS`/`OUTPUTS` are lists of named **`Port`**s (each optionally
+  constrained to a `Space`, and markable `required=False`), and `PARAMS` is a
+  list of typed **`Param`**s (`float`/`int`/`bool`/`enum`/`str`, with
+  `default`, `min`/`max`/`step`, `choices`, `label`, `help`). Calling
+  `stage.run(inputs, params)` coerces and range-checks the params, validates
+  the inputs against the declared ports (presence + space), then dispatches
+  to `apply(inputs, params) -> dict` (the actual per-stage logic, keyed by
+  output port name). `Param`/`Port` are plain frozen dataclasses (stdlib only,
+  no pydantic), and `Stage.schema()` serializes a stage's id/label/description
+  plus its ports and params to a JSON-safe dict.
+- **Registry** (`stages/registry.py`): every stage class is decorated with
+  `@register`, which files it by its `id` in a module-level dict.
+  `stages.list_stages()` returns `[cls.schema() for cls in registry]` — the
+  full palette of available building blocks (ids, ports with their spaces,
+  and typed parameter schemas) as plain JSON-serializable data. This is the
+  contract a future GUI would read to populate a node palette and generate
+  parameter forms; see `import json, stages; json.dumps(stages.list_stages())`.
+  There are 12 registered stages today: `crop`, `background_extract`,
+  `color_calibrate`, `stretch`, `finish`, `saturate`, `masked_denoise`,
+  `unsharp_luma`, `remove_stars`, `screen_recombine`, `export_image`,
+  `preview_sink` — one module apiece under `stages/` (`geometry.py`,
+  `background.py`, `color.py`, `stretch.py`, `finish.py`, `denoise.py`,
+  `stars.py`, `export.py`), auto-imported by `stages/__init__.py` so
+  importing `stages` is enough to populate the registry.
+- **`stages/io.py`** has the FITS load/save helpers used by the shims
+  (`load_fits`/`save_fits`), plus `crop_header`, which keeps `CRPIX1/2` (and
+  therefore the WCS) correct when a stage trims pixels off the array.
+
+Practically: `03_color.py`'s `ColorCalibrateStage` declares an `image` input
+port and an optional `reference` port (defaulting to `image` itself if not
+given) — so PCC runs on whatever WCS-bearing header is attached to its input,
+which is why the pipeline no longer needs a separate `--original` pass-through
+of the raw stacked file (see **Photometric color calibration** below).
+
 ### Starless galaxy finish (optional)
 
 An alternate finishing path that recreates the SetiAstroSuitePro galaxy
@@ -225,10 +282,15 @@ CLAUDE.md       guidance for Claude Code
 
 ### Photometric color calibration
 
-`03_color.py` measures per-channel color gains by matching detected stars in
-the **original** stacked FITS (which carries the WCS) against **Gaia DR3**
-colors (`bp_rp`) queried live via `astroquery`, then applies those gains to the
-working image. This needs **internet access** — the query goes out to the
+`03_color.py` measures per-channel color gains by matching detected stars
+against **Gaia DR3** colors (`bp_rp`) queried live via `astroquery`, then
+applies those gains to the working image. WCS now travels with the image
+through the pipeline (see **The `stages/` package** below), so PCC measures
+directly on the step's own input FITS — the old `--original` requirement is
+gone. `--original` is still accepted as an *optional* argument, but now means
+"measure PCC on this other WCS-bearing frame instead of the input" (e.g. to
+point PCC at an earlier, less-processed frame); it's a reference override, not
+a requirement. This needs **internet access** — the query goes out to the
 Gaia archive over the network — and takes a couple of minutes on a typical
 stack. It writes a `..._pcc_diagnostic.png` alongside the FITS output, plotting
 matched-star color vs. catalog color so the fit can be sanity-checked.

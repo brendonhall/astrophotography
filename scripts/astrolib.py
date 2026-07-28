@@ -177,3 +177,44 @@ def unsharp_luma(img01, amount=0.5, radius=2.0):
     sharp = np.clip(lum + amount * (lum - blur), 0.0, 1.0)
     ratio = np.divide(sharp, lum, out=np.ones_like(lum), where=lum > 1e-6)
     return np.clip(img * ratio[..., None], 0.0, 1.0)
+
+
+# ---------- promoted step logic (background extraction, linked stretch) ----------
+
+def _poly_design(x, y, degree):
+    """Columns for all terms x^i y^j with i+j <= degree."""
+    cols = []
+    for i in range(degree + 1):
+        for j in range(degree + 1 - i):
+            cols.append((x ** i) * (y ** j))
+    return np.stack(cols, axis=-1)
+
+
+def background_model(chan, degree=3, sample=12):
+    """Fit a low-order 2D polynomial to non-source pixels of one channel.
+
+    Returns (model (H,W), source_fraction). Ported verbatim from step 02.
+    """
+    h, w = chan.shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    xn = (xx / (w - 1)) * 2 - 1
+    yn = (yy / (h - 1)) * 2 - 1
+    mask = source_mask(chan)
+    bg = ~mask
+    A = _poly_design(xn[bg][::sample], yn[bg][::sample], degree)
+    coef, *_ = np.linalg.lstsq(A, chan[bg][::sample], rcond=None)
+    full = _poly_design(xn.ravel(), yn.ravel(), degree) @ coef
+    return full.reshape(h, w), float(mask.mean())
+
+
+def linked_stretch(img01, target_bg=0.18, shadows_clip=-1.8):
+    """Linked midtones-transfer stretch using global robust stats. Returns [0,1].
+
+    Ported verbatim from step 04.
+    """
+    med = np.median(img01)
+    mad = np.median(np.abs(img01 - med)) * 1.4826
+    black = np.clip(med + shadows_clip * mad, 0.0, 1.0)
+    scaled = np.clip((img01 - black) / (1.0 - black), 0.0, 1.0)
+    m_shift = (med - black) / (1.0 - black) if (1.0 - black) > 0 else med
+    return _mtf(scaled, _midtone(m_shift, target_bg))
