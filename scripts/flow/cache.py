@@ -17,6 +17,8 @@ def recipe_hash(node, input_hashes) -> str:
 
 
 def file_sig(path) -> str:
+    """mtime (1s resolution) + size; a same-second same-size rewrite may not
+    invalidate the cache, which is acceptable vs. hashing large FITS files."""
     st = os.stat(path)
     return f"{int(st.st_mtime)}:{st.st_size}"
 

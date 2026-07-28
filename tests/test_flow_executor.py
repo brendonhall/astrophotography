@@ -79,3 +79,66 @@ def test_dag_branch_merge_with_mocked_starnet(tmp_path, monkeypatch):
     rep = run(g, inp, "v1", work_dir=str(tmp_path / "w"), out_dir=str(tmp_path / "o"))
     assert "rs" in rep.ran and "rec" in rep.ran
     assert os.path.exists(str(tmp_path / "o" / "in_v1.tif"))
+
+
+def test_cache_key_folds_source_port(tmp_path, monkeypatch):
+    # A multi-output node (remove_stars) has two distinct output ports. A
+    # downstream cacheable node (crop) wired from one port vs the other must
+    # get a different cache key -- otherwise re-wiring which port feeds it
+    # (same node ids, same work_dir) would incorrectly serve the other
+    # port's cached result.
+    inp = _src(tmp_path, shape=(512, 512, 3))
+
+    def fake_remove(px, **k):
+        return px * 0.25, px * 0.75   # starless, stars: distinct arrays
+
+    monkeypatch.setattr(starnet, "remove_stars", fake_remove)
+
+    def _graph(src_port):
+        return Graph(
+            nodes=(Node("s", "load", {"path": "{input}", "space": "nonlinear"}),
+                   Node("rs", "remove_stars", {"stride": 256}),
+                   Node("c", "crop", {"margin": 4}),
+                   Node("e", "export_image", {"out_base": "{out}"})),
+            edges=(Edge("e1", Endpoint("s", "image"), Endpoint("rs", "image")),
+                   Edge("e2", Endpoint("rs", src_port), Endpoint("c", "image")),
+                   Edge("e3", Endpoint("c", "image"), Endpoint("e", "image"))))
+
+    wd, od = str(tmp_path / "work"), str(tmp_path / "out")
+    out_path = str(tmp_path / "out" / "in_v1.tif")
+
+    from skimage.io import imread
+
+    run(_graph("starless"), inp, "v1", work_dir=wd, out_dir=od)
+    arr1 = imread(out_path)
+
+    # Second graph: same node ids, same work_dir, but "c" is now wired from
+    # rs's OTHER output port into the SAME dst port ("c.image").
+    run(_graph("stars"), inp, "v1", work_dir=wd, out_dir=od)
+    arr2 = imread(out_path)
+
+    assert not np.array_equal(arr1, arr2)
+
+
+def test_report_surfaces_validation_warnings(tmp_path):
+    # crop's output is never wired to anything -> validate() emits a
+    # "no consumer" warning (not an error), which the run() report must
+    # surface for the CLI to print.
+    inp = _src(tmp_path)
+    g = Graph(nodes=(Node("s", "load", {"path": "{input}", "space": "nonlinear"}),
+                     Node("c", "crop", {"margin": 4})),
+              edges=(Edge("e1", Endpoint("s", "image"), Endpoint("c", "image")),))
+    rep = run(g, inp, "v1", work_dir=str(tmp_path / "w"), out_dir=str(tmp_path / "o"))
+    assert any("no consumer" in w for w in rep.warnings)
+
+
+def test_runtime_stage_error_wrapped_as_flow_error(tmp_path):
+    # remove_stars.check() raises StageError at runtime when the image is
+    # below StarNet2's minimum size; the executor must wrap it as a
+    # FlowError with node context rather than let it escape raw.
+    inp = _src(tmp_path, shape=(64, 64, 3))
+    g = Graph(nodes=(Node("s", "load", {"path": "{input}", "space": "nonlinear"}),
+                     Node("rs", "remove_stars", {"stride": 256})),
+              edges=(Edge("e1", Endpoint("s", "image"), Endpoint("rs", "image")),))
+    with pytest.raises(FlowError, match=r"\[rs\]"):
+        run(g, inp, "v1", work_dir=str(tmp_path / "w"), out_dir=str(tmp_path / "o"))

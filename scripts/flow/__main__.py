@@ -52,6 +52,8 @@ def main(argv=None) -> int:
         except FlowError as e:
             print(f"ERROR: {e}", file=sys.stderr)
             return 1
+        for w in rep.warnings:
+            print(f"WARNING {w}")
         print(f"ran {len(rep.ran)}, cached {len(rep.cached)}")
         return 0
     return 2

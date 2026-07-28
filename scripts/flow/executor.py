@@ -4,6 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 import os
 import stages
+from stages.base import StageError
 from .validate import validate
 from . import cache as _cache
 
@@ -49,7 +50,8 @@ def _resolve(params, tokens):
 
 
 def run(graph, input_path, label, work_dir="work", out_dir="output", cache=True):
-    errs = [i for i in validate(graph) if i.level == "error"]
+    issues = validate(graph)
+    errs = [i for i in issues if i.level == "error"]
     if errs:
         raise FlowError("; ".join(f"[{i.where}] {i.message}" for i in errs))
 
@@ -59,6 +61,7 @@ def run(graph, input_path, label, work_dir="work", out_dir="output", cache=True)
     tokens = {"{input}": input_path, "{out}": out_base, "{work}": work_dir}
 
     report = RunReport()
+    report.warnings = [f"[{i.where}] {i.message}" for i in issues if i.level == "warning"]
     payloads = {}      # (node, port) -> Image
     node_hash = {}     # node id -> recipe hash
 
@@ -70,7 +73,7 @@ def run(graph, input_path, label, work_dir="work", out_dir="output", cache=True)
         inputs, in_hashes = {}, {}
         for e in graph.in_edges(nid):
             inputs[e.dst.port] = payloads[(e.src.node, e.src.port)]
-            in_hashes[e.dst.port] = node_hash[e.src.node]
+            in_hashes[e.dst.port] = f"{node_hash[e.src.node]}:{e.src.port}"
         if node.type == "load":
             in_hashes["__file__"] = _cache.file_sig(params["path"])
 
@@ -86,14 +89,20 @@ def run(graph, input_path, label, work_dir="work", out_dir="output", cache=True)
                 report.cached.append(nid)
                 report.outputs[nid] = files
                 continue
-            result = cls().run(inputs, params)
+            try:
+                result = cls().run(inputs, params)
+            except StageError as e:
+                raise FlowError(f"[{nid}] {e}")
             for p in out_ports:
                 payloads[(nid, p)] = result[p]
                 _cache.store_cached(files[p], result[p])
             report.outputs[nid] = files
             report.ran.append(nid)
         else:
-            cls().run(inputs, params)      # sink: writes files, not cached
+            try:
+                cls().run(inputs, params)      # sink: writes files, not cached
+            except StageError as e:
+                raise FlowError(f"[{nid}] {e}")
             report.ran.append(nid)
 
     return report

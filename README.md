@@ -127,8 +127,11 @@ would sit on top of.
 - **Validation** (`flow/validate.py`): `validate(graph) -> [Issue]` checks
   structural rules — unknown stage/port ids, duplicate node ids, space
   mismatches across an edge, missing required inputs, cycles, etc. — as
-  errors, plus a dead-branch warning for nodes with no path to a sink.
-  `flow validate` (see below) exits non-zero if any `Issue` is an error.
+  errors, plus a dead-branch warning for each output port that has no
+  consumer (rather than tracing whether it eventually reaches a sink).
+  `flow validate` (see below) exits non-zero if any `Issue` is an error;
+  warnings surface too — `flow run` prints them before its `ran/cached`
+  summary.
 - **Executor** (`flow/executor.py`): `run(graph, input_path, label, work_dir="work", out_dir="output", cache=True) -> RunReport`
   validates the graph, resolves `{input}`/`{out}`/`{work}` tokens in node
   params, topologically sorts the nodes, and runs each one's `stages.Stage`

@@ -69,3 +69,16 @@ def test_dead_output_is_warning():
               edges=(Edge("e1", Endpoint("s", "image"), Endpoint("c", "image")),))
     # crop.image output has no consumer -> warning, not error
     assert any(i.level == "warning" and "no consumer" in i.message for i in validate(g))
+
+
+def test_duplicate_node_id():
+    g = Graph(nodes=(Node("c", "crop", {"margin": 4}), Node("c", "crop", {"margin": 8})),
+              edges=())
+    assert any("duplicate node id" in i.message for i in _errs(g))
+
+
+def test_token_param_is_not_a_param_error():
+    g = Graph(nodes=(Node("e", "export_image", {"out_base": "{out}"}),))
+    assert not any("param" in i.message for i in _errs(g))
+    g2 = Graph(nodes=(Node("s", "load", {"path": "{input}", "space": "nonlinear"}),))
+    assert not any("param" in i.message for i in _errs(g2))

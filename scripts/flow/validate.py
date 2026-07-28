@@ -16,7 +16,11 @@ def validate(graph) -> list:
     issues = []
     ids = {n.id for n in graph.nodes}
     stage_of = {}
+    seen_ids = set()
     for n in graph.nodes:
+        if n.id in seen_ids:
+            issues.append(Issue("error", n.id, f"duplicate node id '{n.id}'"))
+        seen_ids.add(n.id)
         try:
             cls = stages.get(n.type)
         except KeyError:
