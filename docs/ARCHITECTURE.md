@@ -175,6 +175,6 @@ FITS-input fix on in-progress branches (`feature/portfolio-protect-nebula`,
 - To extend the pipeline: add a `Stage` (see `scripts/stages/`), and it's
   immediately usable in flows and visible to `flow schema`.
 - Design rationale for any feature is in `docs/superpowers/specs/`.
-- Env note: the `.venv` is not portable across machines (macOS vs Linux); if
-  `.venv/bin/python` is a dangling symlink after Dropbox sync, rebuild with
-  `make setup`.
+- Env note: the environment lives OUTSIDE Dropbox at `~/.venvs/astrophotography`
+  (managed by uv), so nothing venv-related syncs between macOS and Linux; run
+  `make setup` (`uv sync`) per machine.

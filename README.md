@@ -9,15 +9,18 @@ images are kept local (and in Dropbox) — never committed to git.
 
 ## Setup
 
-Requires Python 3.9+ and standard build tools.
+Prerequisites: install [uv](https://docs.astral.sh/uv/) — macOS: `brew install uv`;
+Linux: `curl -LsSf https://astral.sh/uv/install.sh | sh`. Python itself is managed by
+uv (pinned to 3.12 via `.python-version`), so no system Python setup is needed.
 
 ```sh
-make setup          # creates .venv and installs requirements.txt
+make setup          # builds the environment via uv sync
 ```
 
-The virtualenv (`.venv/`) is git-ignored and tagged to skip Dropbox sync, because
-its binaries aren't portable between macOS and Linux. On each machine, run
-`make setup` to build a local environment from `requirements.txt`.
+`make setup` builds the environment at `~/.venvs/astrophotography` — deliberately
+**outside** the Dropbox-synced project directory — from `pyproject.toml` + `uv.lock`.
+It lives outside Dropbox because venv binaries aren't portable between macOS and
+Linux; run `make setup` on each machine to build its own local environment.
 
 ## Usage
 
