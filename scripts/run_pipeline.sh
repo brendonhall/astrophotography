@@ -6,10 +6,10 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(dirname "$HERE")"
-PY="$ROOT/.venv/bin/python"
+PY="${UV_PROJECT_ENVIRONMENT:-$HOME/.venvs/astrophotography}/bin/python"
 
 if [[ ! -x "$PY" ]]; then
-  echo "No .venv found. Run 'make setup' (or see README.md) first." >&2
+  echo "Environment not found at $PY. Run 'make setup' (or see README.md) first." >&2
   exit 1
 fi
 

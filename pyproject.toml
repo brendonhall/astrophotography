@@ -1,0 +1,20 @@
+[project]
+name = "astrophotography"
+version = "0.0.0"
+requires-python = ">=3.9,<3.13"
+dependencies = [
+    "numpy>=1.26,<2.0",
+    "astropy>=6.0",
+    "scipy>=1.11",
+    "photutils>=1.10",
+    "scikit-image>=0.22",
+    "matplotlib>=3.7",
+    "pillow>=10.0",
+    "astroquery>=0.4.7",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.uv]
+package = false

@@ -36,17 +36,20 @@ Two GUI apps are installed; both also have command-line / scripting entry points
 
 ## Python environment
 
-- The project uses a **local `.venv`** (git-ignored, and tagged to skip Dropbox sync
-  because venv binaries aren't portable across macOS/Linux). Build it with `make setup`,
-  which installs `requirements.txt`. Use `.venv/bin/python` — the system Python 3.9.6 on
-  `PATH` has no astronomy packages.
+- The project uses **uv**. The environment lives at `~/.venvs/astrophotography`
+  (OUTSIDE Dropbox, so venv binaries never sync across macOS/Linux), selected via
+  `UV_PROJECT_ENVIRONMENT`. Build/update it with `make setup` (which runs `uv sync`);
+  dependencies come from `pyproject.toml` + `uv.lock`.
+- To run project code use `uv run python ...` (or
+  `~/.venvs/astrophotography/bin/python` directly). The system Python on `PATH` has no
+  astronomy packages.
 - Siril ships its own bundled Python 3.12
   (`/Applications/Siril.app/Contents/Frameworks/.../python3`) used for its internal
   scripting; don't rely on it as the project interpreter.
 
 ## Commands
 
-- `make setup` — create `.venv`, install requirements
+- `make setup` — create env (`~/.venvs/astrophotography`) and install deps via `uv sync`
 - `make inspect FITS="<path>"` — header + per-channel stats
 - `make run FITS="<path>" [V=label]` — run the full standard pipeline; output is always
   written under a **unique versioned name** (`output/<name>_<label>.{tif,png}`), never

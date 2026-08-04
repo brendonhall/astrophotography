@@ -1,26 +1,21 @@
-# Convenience targets. Requires python3 on PATH for `make setup`.
-VENV := .venv
-PY   := $(VENV)/bin/python
+# Convenience targets. Requires uv on PATH for `make setup`.
+export UV_PROJECT_ENVIRONMENT := $(HOME)/.venvs/astrophotography
+PY   := uv run python
 
 .PHONY: setup inspect run run-starless clean help test
 
 test:
-	$(PY) -m pytest -q
+	uv run pytest -q
 
 help:
-	@echo "make setup                  - create .venv and install requirements"
+	@echo "make setup                  - create env (~/.venvs/astrophotography) and install deps via uv"
 	@echo "make inspect FITS=path      - print FITS header + stats"
 	@echo "make run FITS=path [V=label]- run full pipeline -> output/<name>_<label>"
 	@echo "make run-starless FITS=path [V=label] - full pipeline w/ StarNet2 starless finish"
 	@echo "make clean                  - remove work/ intermediates"
 
 setup:
-	python3 -m venv $(VENV)
-	$(PY) -m pip install --upgrade pip
-	$(PY) -m pip install -r requirements.txt
-	@# Keep the venv out of Dropbox sync (macOS; harmless if Dropbox absent).
-	-xattr -w com.dropbox.ignored 1 $(VENV) 2>/dev/null || true
-	@echo "Environment ready in $(VENV)"
+	uv sync
 
 inspect:
 	$(PY) scripts/inspect_fits.py "$(FITS)"
