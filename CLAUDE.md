@@ -48,32 +48,50 @@ Two GUI apps are installed; both also have command-line / scripting entry points
 
 - `make setup` — create `.venv`, install requirements
 - `make inspect FITS="<path>"` — header + per-channel stats
-- `make run FITS="<path>" [V=label]` — run the full pipeline; output is always written
-  under a **unique versioned name** (`output/<name>_<label>.{tif,png}`), never overwriting
-  a prior run. Omitting `V=` uses a timestamp.
-- `make clean` — remove `work/` intermediates
+- `make run FITS="<path>" [V=label]` — run the full standard pipeline; output is always
+  written under a **unique versioned name** (`output/<name>_<label>.{tif,png}`), never
+  overwriting a prior run. Omitting `V=` uses a timestamp.
+- `make run-starless FITS="<path>" [V=label]` — same, but the starless finish (remove
+  stars → sharpen/denoise the starless galaxy → screen the stars back in).
+- `make clean` — remove `work/` intermediates (including the flow cache)
 - `make test` — run the pytest suite (offline-safe; no live Gaia queries)
+- `python -m flow run (FLOW.json | --builtin linear|starless) --input X.fit --label v1`
+  — run a flow graph directly (`--no-cache` to force recompute); also
+  `python -m flow validate …` and `python -m flow schema` (the node palette).
+  Run from the repo root with `scripts/` on `PYTHONPATH` (as `run_pipeline.sh` does).
 
 ## Processing pipeline
 
-`scripts/` holds a numbered chain that turns a linear stacked FITS into a finished image:
-crop → background/gradient removal → color calibration → nonlinear stretch → finish/export.
-Each step reads a FITS and writes a FITS + preview PNG; intermediates go in `work/`.
-`scripts/astrolib.py` has shared helpers (FITS I/O, STF autostretch, source masking).
-Tuning parameters are constants at the top of each step script. See README.md for the
-step-by-step table.
+The pipeline is layered — **read `docs/ARCHITECTURE.md` first** for the full map. In short:
 
-Step 03 (`03_color.py`) does **Gaia DR3 photometric color calibration (PCC)**: it
-measures per-channel gains on the **original** stacked FITS (the one with the WCS,
-passed via `--original`), then applies those gains to the working image. PCC needs
-internet (queries Gaia via `astroquery`) and writes a `..._pcc_diagnostic.png`; if
-the query fails or too few stars match, it falls back automatically to the gentle
-white-balance approach. See `scripts/pcc.py` and the README's "Photometric color
-calibration" section for details.
+- **Numeric core** (`scripts/astrolib.py`, `pcc.py`, `starnet.py`) — pure functions
+  (FITS I/O, background fit, linked stretch, finish, screen, masked denoise, PCC, StarNet2).
+- **Stages** (`scripts/stages/`) — one small self-describing class per operation, with a
+  typed parameter schema + named input/output ports, wrapping the core. A registry
+  (`stages.list_stages()`) exposes them; images flow as an `Image` payload carrying
+  pixels, a `space` tag (`linear-adu`/`nonlinear`), **and the full FITS header (so WCS
+  travels with the data)**.
+- **Flow** (`scripts/flow/`) — connects stages into a DAG, (de)serializes it to JSON,
+  validates it, and executes it with content-addressed caching in `work/cache/`. The
+  built-in `linear`/`starless` flows reproduce the standard pipelines; `python -m flow`
+  is the CLI.
 
-**Output convention:** never overwrite a processed image — every processing variant gets
-its own versioned filename so results can be compared side by side. `run_pipeline.sh`
-enforces this automatically.
+The numbered scripts (`scripts/01_crop.py` … `05b_starless_finish.py`) are now **thin
+shims over the stages**, kept as standalone CLIs. `run_pipeline.sh` (and `make run` /
+`make run-starless`) is unified over the flow executor.
+
+**Color calibration** (`color_calibrate` stage / `03_color.py`) does Gaia DR3 photometric
+color calibration via `scripts/pcc.py`. Because WCS now travels in the payload, it
+measures on its own input (no `--original` needed; an optional `reference` port can
+override the frame it measures on). PCC needs internet (`astroquery`) and writes a
+`..._pcc_diagnostic.png`; on query failure or too few matched stars it falls back to a
+gentle white-balance. To add a new step, drop a `@register`ed `Stage` into
+`scripts/stages/` — it auto-registers and becomes usable in flows and `flow schema`.
+
+**Output convention:** never overwrite a processed image — every variant gets its own
+versioned filename (`output/<name>_<label>`) so results compare side by side; the flow
+executor enforces this. External tools: StarNet2 (`~/StarNet2`), Cosmic Clarity
+(`~/CosmicClarity`, via `tools/ccdenoise.sh` / `tools/portfolio_finish.py`).
 
 ## Working notes
 
